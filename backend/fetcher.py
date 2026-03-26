@@ -5,9 +5,10 @@ Responsibilities
 ────────────────
 • Launch a headless Chromium browser.
 • Navigate to the target URL with realistic viewport & user-agent.
-• Wait for network-idle + extra settle time.
+• Wait for domcontentloaded + extra settle time.
 • Perform basic scroll-to-bottom to trigger lazy-loaded content.
-• Return the fully rendered HTML string.
+• Return the fully rendered HTML string **and** fetch metadata
+  (load time, HTTP status code).
 
 All async — callers must run inside an asyncio event loop.
 """
@@ -16,9 +17,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Awaitable, Callable, Optional
+import time
+from dataclasses import dataclass, field
+from typing import Any, Awaitable, Callable, Dict, Optional
 
-from playwright.async_api import async_playwright, Browser, Page, TimeoutError as PWTimeout
+from playwright.async_api import (
+    async_playwright,
+    Browser,
+    Page,
+    Response,
+    TimeoutError as PWTimeout,
+)
 
 from backend.config import PW_CONFIG
 
@@ -26,6 +35,26 @@ logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[str, str, Optional[int]], Awaitable[None]]
 
+
+# ──────────────────────────────────────────────────────────────────────
+#  Return type
+# ──────────────────────────────────────────────────────────────────────
+
+@dataclass
+class FetchResult:
+    """Container for the fetched HTML and performance metadata."""
+
+    html: str
+    status_code: int = 200
+    load_time_ms: int = 0
+
+    def __len__(self) -> int:
+        return len(self.html)
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  Progress helpers
+# ──────────────────────────────────────────────────────────────────────
 
 async def _emit_progress(
     progress_callback: Optional[ProgressCallback],
@@ -38,7 +67,14 @@ async def _emit_progress(
         await progress_callback(stage, detail, percent)
 
 
-async def _scroll_page(page: Page, progress_callback: Optional[ProgressCallback] = None) -> None:
+# ──────────────────────────────────────────────────────────────────────
+#  Scroll-to-bottom  (lazy-load trigger)
+# ──────────────────────────────────────────────────────────────────────
+
+async def _scroll_page(
+    page: Page,
+    progress_callback: Optional[ProgressCallback] = None,
+) -> None:
     """
     Incrementally scroll to the bottom of the page to trigger
     lazy-loaded images, infinite-scroll widgets, and deferred JS.
@@ -55,7 +91,11 @@ async def _scroll_page(page: Page, progress_callback: Optional[ProgressCallback]
         new_height = await page.evaluate("document.body.scrollHeight")
 
         if new_height == previous_height:
-            await _emit_progress(progress_callback, "fetch:scroll", f"scroll stabilized after {i + 1} pass(es)")
+            await _emit_progress(
+                progress_callback,
+                "fetch:scroll",
+                f"scroll stabilized after {i + 1} pass(es)",
+            )
             break
     else:
         await _emit_progress(
@@ -65,34 +105,29 @@ async def _scroll_page(page: Page, progress_callback: Optional[ProgressCallback]
         )
 
 
+# ──────────────────────────────────────────────────────────────────────
+#  Public API
+# ──────────────────────────────────────────────────────────────────────
+
 async def fetch_page(
     url: str,
     *,
     browser: Optional[Browser] = None,
     progress_callback: Optional[ProgressCallback] = None,
-) -> str:
+) -> FetchResult:
     """
-    Render *url* in headless Chromium and return the final HTML.
-
-    Parameters
-    ----------
-    url : str
-        Fully-qualified URL (must include scheme).
-    browser : Browser | None
-        Re-use an existing Playwright browser instance.  When *None* a
-        new one is launched and closed automatically.
+    Render *url* in headless Chromium and return the final HTML + metadata.
 
     Returns
     -------
-    str
-        The page's rendered outer HTML.
+    FetchResult
+        Contains ``.html``, ``.status_code``, and ``.load_time_ms``.
 
     Raises
     ------
     RuntimeError
         If the page fails to load after retries.
     """
-
     own_browser = browser is None
 
     pw = await async_playwright().start()
@@ -101,7 +136,9 @@ async def fetch_page(
     try:
         if own_browser:
             browser = await pw.chromium.launch(headless=True)
-            await _emit_progress(progress_callback, "fetch:init", "launched headless Chromium", 16)
+            await _emit_progress(
+                progress_callback, "fetch:init", "launched headless Chromium", 16
+            )
 
         context = await browser.new_context(
             viewport={
@@ -114,13 +151,14 @@ async def fetch_page(
         )
 
         page = await context.new_page()
-        await _emit_progress(progress_callback, "fetch:page", "browser context and page created", 20)
+        await _emit_progress(
+            progress_callback, "fetch:page", "browser context and page created", 20
+        )
 
-        # ------------------------------------------------------------------
-        # Navigate — wait for domcontentloaded (fast & reliable for JS-heavy
-        # sites that never fully reach networkidle).  The post_load_delay
-        # below gives deferred scripts extra time to settle.
-        # ------------------------------------------------------------------
+        # ── Navigate ──────────────────────────────────────────────────
+        status_code = 200
+        t_start = time.monotonic()
+
         try:
             await _emit_progress(
                 progress_callback,
@@ -128,12 +166,23 @@ async def fetch_page(
                 f"opening {url} with timeout={PW_CONFIG.navigation_timeout_ms}ms",
                 25,
             )
-            await page.goto(
+            response: Optional[Response] = await page.goto(
                 url,
                 wait_until="domcontentloaded",
                 timeout=PW_CONFIG.navigation_timeout_ms,
             )
-            await _emit_progress(progress_callback, "fetch:navigate", "domcontentloaded reached", 32)
+            if response is not None:
+                status_code = response.status
+
+            t_loaded = time.monotonic()
+            load_time_ms = int((t_loaded - t_start) * 1000)
+
+            await _emit_progress(
+                progress_callback,
+                "fetch:navigate",
+                f"domcontentloaded reached (status={status_code}, {load_time_ms}ms)",
+                32,
+            )
         except PWTimeout as exc:
             raise RuntimeError(
                 f"Page failed to load within timeout: {url}"
@@ -152,21 +201,35 @@ async def fetch_page(
         await _scroll_page(page, progress_callback)
 
         # Scroll back to top so the final snapshot represents full page.
-        await _emit_progress(progress_callback, "fetch:finalize", "returning to top of page", 36)
+        await _emit_progress(
+            progress_callback, "fetch:finalize", "returning to top of page", 36
+        )
         await page.evaluate("window.scrollTo(0, 0)")
         await page.wait_for_timeout(500)
 
         html: str = await page.content()
-        await _emit_progress(progress_callback, "fetch:finalize", "captured final page HTML", 38)
+        await _emit_progress(
+            progress_callback, "fetch:finalize", "captured final page HTML", 38
+        )
 
         await context.close()
-        await _emit_progress(progress_callback, "fetch:done", "browser context closed", 39)
+        await _emit_progress(
+            progress_callback, "fetch:done", "browser context closed", 39
+        )
 
-        return html
+        return FetchResult(
+            html=html,
+            status_code=status_code,
+            load_time_ms=load_time_ms,
+        )
 
     finally:
         if own_browser and browser:
             await browser.close()
-            await _emit_progress(progress_callback, "fetch:done", "browser closed", 39)
+            await _emit_progress(
+                progress_callback, "fetch:done", "browser closed", 39
+            )
         await pw.stop()
-        await _emit_progress(progress_callback, "fetch:done", "Playwright stopped", 40)
+        await _emit_progress(
+            progress_callback, "fetch:done", "Playwright stopped", 40
+        )
