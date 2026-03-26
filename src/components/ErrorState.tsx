@@ -4,9 +4,10 @@ import { AlertTriangle, RotateCcw } from "lucide-react";
 
 interface ErrorStateProps {
     onRetry: () => void;
+    message?: string;
 }
 
-export function ErrorState({ onRetry }: ErrorStateProps) {
+export function ErrorState({ onRetry, message }: ErrorStateProps) {
     return (
         <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
             <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-6">
@@ -16,8 +17,8 @@ export function ErrorState({ onRetry }: ErrorStateProps) {
                 Audit Failed
             </h3>
             <p className="text-sm text-white/40 max-w-sm text-center mb-6">
-                We couldn&apos;t reach the target URL or an unexpected error occurred
-                during analysis. Please verify the URL and try again.
+                {message ||
+                    "We couldn't reach the target URL or an unexpected error occurred during analysis. Please verify the URL and try again."}
             </p>
             <button
                 onClick={onRetry}

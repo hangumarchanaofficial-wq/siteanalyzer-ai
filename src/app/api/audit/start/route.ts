@@ -1,20 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { normalizeAuditResult } from "@/lib/ai-analyze";
-import { BackendAuditResponse } from "@/lib/schemas";
 
 const BACKEND_BASE_URL =
     process.env.AUDIT_API_BASE_URL?.replace(/\/$/, "") || "http://127.0.0.1:8000";
 const DEFAULT_AI_BACKEND =
     process.env.DEFAULT_AI_BACKEND === "ollama" ? "ollama" : "openrouter";
-
-export async function GET() {
-    return NextResponse.json({
-        ok: true,
-        mode: "proxy",
-        backend: BACKEND_BASE_URL,
-        aiBackend: DEFAULT_AI_BACKEND,
-    });
-}
 
 export async function POST(request: NextRequest) {
     try {
@@ -29,7 +18,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "URL is required." }, { status: 400 });
         }
 
-        const upstream = await fetch(`${BACKEND_BASE_URL}/api/audit`, {
+        const upstream = await fetch(`${BACKEND_BASE_URL}/api/audit/start`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -39,29 +28,17 @@ export async function POST(request: NextRequest) {
         });
 
         const payload = await upstream.json().catch(() => null);
-
         if (!upstream.ok || !payload) {
             return NextResponse.json(
-                {
-                    error:
-                        payload?.detail ||
-                        payload?.error ||
-                        "Backend audit request failed.",
-                },
+                { error: payload?.detail || payload?.error || "Failed to start audit." },
                 { status: upstream.status || 502 }
             );
         }
 
-        const normalized = normalizeAuditResult(payload as BackendAuditResponse);
-        return NextResponse.json(normalized);
+        return NextResponse.json(payload);
     } catch (error) {
         return NextResponse.json(
-            {
-                error:
-                    error instanceof Error
-                        ? error.message
-                        : "Unexpected audit route failure.",
-            },
+            { error: error instanceof Error ? error.message : "Unexpected audit start failure." },
             { status: 500 }
         );
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Navbar } from "@/components/Navbar";
 import { HeroSection } from "@/components/HeroSection";
 import { IndustryBenchmarks } from "@/components/benchmarks/IndustryBenchmarks";
@@ -8,42 +8,117 @@ import { AuditDashboard } from "@/components/AuditDashboard";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingState } from "@/components/LoadingState";
 import { ErrorState } from "@/components/ErrorState";
-import { mockAuditResult, generateLoadingDelay } from "@/lib/mock-data";
 import { AuditResult, AuditState } from "@/types/audit";
+import { AuditJobEvent } from "@/lib/schemas";
+import { getAuditJobStatus, startAuditJob } from "@/lib/ai-analyze";
 
 export default function Home() {
   const [auditState, setAuditState] = useState<AuditState>("idle");
   const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
   const [inputUrl, setInputUrl] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [auditJobId, setAuditJobId] = useState("");
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [progressDetail, setProgressDetail] = useState("");
+  const [progressStage, setProgressStage] = useState("");
+  const [progressEvents, setProgressEvents] = useState<AuditJobEvent[]>([]);
+  const [jobCreatedAt, setJobCreatedAt] = useState("");
+  const [jobUpdatedAt, setJobUpdatedAt] = useState("");
+  const [jobBackend, setJobBackend] = useState<"ollama" | "openrouter" | "">("");
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => stopPolling, [stopPolling]);
 
   const handleRunAudit = useCallback(async (url: string) => {
     if (!url.trim()) return;
+    stopPolling();
     setInputUrl(url);
     setAuditState("loading");
     setAuditResult(null);
+    setErrorMessage("");
+    setProgressPercent(0);
+    setProgressDetail("Submitting audit job...");
+    setProgressStage("audit:queued");
+    setProgressEvents([]);
+    setJobCreatedAt("");
+    setJobUpdatedAt("");
+    setJobBackend("");
 
     try {
-      await generateLoadingDelay();
-      setAuditResult({
-        ...mockAuditResult,
-        url: url,
-        timestamp: new Date().toISOString(),
-      });
-      setAuditState("success");
-    } catch {
+      const job = await startAuditJob(url);
+      setAuditJobId(job.job_id);
+      setJobBackend(job.backend);
+      setProgressPercent(job.percent ?? 0);
+      setProgressDetail(job.detail ?? "Audit started");
+      setProgressStage(job.stage ?? "audit:start");
+      setProgressEvents(job.events ?? []);
+      setJobCreatedAt(job.created_at ?? "");
+      setJobUpdatedAt(job.updated_at ?? "");
+
+      pollingRef.current = setInterval(async () => {
+        try {
+          const status = await getAuditJobStatus(job.job_id);
+          setJobBackend(status.backend);
+          setProgressPercent(status.percent ?? 0);
+          setProgressDetail(status.detail ?? "");
+          setProgressStage(status.stage ?? "");
+          setProgressEvents(status.events ?? []);
+          setJobCreatedAt(status.created_at ?? "");
+          setJobUpdatedAt(status.updated_at ?? "");
+
+          if (status.status === "success" && status.normalizedResult) {
+            stopPolling();
+            setAuditJobId("");
+            setAuditResult(status.normalizedResult);
+            setAuditState("success");
+          } else if (status.status === "error") {
+            stopPolling();
+            setAuditJobId("");
+            setErrorMessage(status.error || status.detail || "Audit failed unexpectedly.");
+            setAuditState("error");
+          }
+        } catch (error) {
+          stopPolling();
+          setAuditJobId("");
+          setErrorMessage(
+            error instanceof Error ? error.message : "Failed to fetch audit progress."
+          );
+          setAuditState("error");
+        }
+      }, 1000);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "Audit failed unexpectedly."
+      );
       setAuditState("error");
     }
-  }, []);
+  }, [stopPolling]);
 
   const handleTryDemo = useCallback(() => {
     handleRunAudit("https://siteinsight.ai/landing");
   }, [handleRunAudit]);
 
   const handleReset = useCallback(() => {
+    stopPolling();
     setAuditState("idle");
     setAuditResult(null);
     setInputUrl("");
-  }, []);
+    setAuditJobId("");
+    setProgressPercent(0);
+    setProgressDetail("");
+    setProgressStage("");
+    setProgressEvents([]);
+    setJobCreatedAt("");
+    setJobUpdatedAt("");
+    setJobBackend("");
+  }, [stopPolling]);
 
   return (
     <main className="relative min-h-screen">
@@ -73,9 +148,24 @@ export default function Home() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
           {auditState === "idle" && <EmptyState />}
-          {auditState === "loading" && <LoadingState url={inputUrl} />}
+          {auditState === "loading" && (
+            <LoadingState
+              url={inputUrl}
+              percent={progressPercent}
+              detail={progressDetail}
+              stage={progressStage}
+              events={progressEvents}
+              createdAt={jobCreatedAt}
+              updatedAt={jobUpdatedAt}
+              backend={jobBackend || undefined}
+              jobId={auditJobId || undefined}
+            />
+          )}
           {auditState === "error" && (
-            <ErrorState onRetry={() => handleRunAudit(inputUrl)} />
+            <ErrorState
+              message={errorMessage}
+              onRetry={() => handleRunAudit(inputUrl)}
+            />
           )}
           {auditState === "success" && auditResult && (
             <AuditDashboard result={auditResult} onReset={handleReset} />

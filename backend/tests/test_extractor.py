@@ -127,7 +127,7 @@ class TestMetrics:
         assert result["metrics"]["links"]["external"] >= 1
 
     def test_image_count(self, result):
-        assert result["metrics"]["images"] == 4
+        assert result["metrics"]["image_count"] == 4
 
     def test_missing_alt_percent(self, result):
         assert result["metrics"]["missing_alt_percent"] == 50.0
@@ -224,7 +224,7 @@ class TestEdgeCases:
         dom = BeautifulSoup("", "html.parser")
         result = extract_metrics(dom, "https://example.com")
         assert result["metrics"]["word_count"] == 0
-        assert result["metrics"]["images"] == 0
+        assert result["metrics"]["image_count"] == 0
         assert result["content_signals"]["cta_texts"] == []
 
     def test_no_body(self):

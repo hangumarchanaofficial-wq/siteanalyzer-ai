@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Sector } from "recharts";
+import { useEffect, useState, useCallback } from "react";
+import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { ChartCard } from "./ChartCard";
 import { healthData } from "@/lib/benchmark-data";
 
 export function HealthDistributionChart() {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const onMouseEnter = useCallback((_: unknown, index: number) => {
     setActiveIndex(index);
@@ -26,6 +31,7 @@ export function HealthDistributionChart() {
       <div className="flex flex-col items-center">
         {/* Donut */}
         <div className="relative w-full h-[220px] sm:h-[240px]">
+          {mounted ? (
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <defs>
@@ -80,6 +86,9 @@ export function HealthDistributionChart() {
               </Pie>
             </PieChart>
           </ResponsiveContainer>
+          ) : (
+            <div className="w-full h-full rounded-full bg-white/[0.03]" />
+          )}
 
           {/* Center label */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">

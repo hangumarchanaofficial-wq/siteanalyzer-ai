@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -16,6 +16,11 @@ import { issueData } from "@/lib/benchmark-data";
 
 export function CommonIssuesChart() {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <ChartCard
@@ -23,6 +28,7 @@ export function CommonIssuesChart() {
       subtitle="Percentage of analyzed pages affected"
     >
       <div className="w-full h-[280px] sm:h-[300px]">
+        {mounted ? (
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={issueData}
@@ -110,6 +116,9 @@ export function CommonIssuesChart() {
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+        ) : (
+          <div className="w-full h-full rounded-xl bg-white/[0.03]" />
+        )}
       </div>
 
       {/* Legend pills below chart */}

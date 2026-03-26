@@ -401,7 +401,7 @@ def extract_metrics(dom: BeautifulSoup, url: str) -> Dict[str, Any]:
             "headings": heading_info["counts"],
             "cta_count": cta_info["count"],
             "links": links,
-            "images": image_info["count"],
+            "image_count": image_info["count"],
             "missing_alt_percent": image_info["missing_alt_percent"],
             "meta": meta,
         },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   AreaChart,
   Area,
@@ -45,6 +45,11 @@ export function PerformanceTrendsChart() {
   const [activeSeries, setActiveSeries] = useState<Set<string>>(
     new Set(seriesConfig.map((s) => s.key))
   );
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const toggleSeries = useCallback((key: string) => {
     setActiveSeries((prev) => {
@@ -94,6 +99,7 @@ export function PerformanceTrendsChart() {
       }
     >
       <div className="w-full h-[280px] sm:h-[320px]">
+        {mounted ? (
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={trendData}
@@ -195,6 +201,9 @@ export function PerformanceTrendsChart() {
             ))}
           </AreaChart>
         </ResponsiveContainer>
+        ) : (
+          <div className="w-full h-full rounded-xl bg-white/[0.03]" />
+        )}
       </div>
     </ChartCard>
   );
