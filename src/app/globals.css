@@ -1,0 +1,149 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --mouse-x: 50%;
+    --mouse-y: 50%;
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+*::-webkit-scrollbar {
+    width: 6px;
+}
+
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.12);
+    border-radius: 999px;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    background:
+        radial-gradient(circle at top center, rgba(167, 239, 255, 0.08), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(255, 255, 255, 0.04), transparent 24%),
+        #060607;
+    color: #f5f5f5;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+@layer utilities {
+    .glass {
+        background: rgba(18, 18, 20, 0.72);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+
+    .glass-strong {
+        background: rgba(10, 10, 12, 0.84);
+        backdrop-filter: blur(28px);
+        -webkit-backdrop-filter: blur(28px);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .shimmer-bg {
+        background: linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0) 0%,
+            rgba(255, 255, 255, 0.05) 50%,
+            rgba(255, 255, 255, 0) 100%
+        );
+        background-size: 200% 100%;
+        animation: shimmer 2s linear infinite;
+    }
+
+    .text-gradient {
+        background: linear-gradient(180deg, #ffffff 0%, #b9bcc4 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .text-gradient-accent {
+        background: linear-gradient(180deg, #ffffff 0%, #d7d9de 52%, #a7efff 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .border-gradient {
+        border-image: linear-gradient(
+            135deg,
+            rgba(167, 239, 255, 0.24),
+            rgba(255, 255, 255, 0.08)
+        ) 1;
+    }
+
+    .glow-dot {
+        box-shadow:
+            0 0 6px rgba(167, 239, 255, 0.65),
+            0 0 12px rgba(167, 239, 255, 0.2);
+    }
+
+    .chart-fade-in {
+        animation: chartFadeIn 0.8s ease-out forwards;
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+@keyframes chartFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+    stroke: rgba(255, 255, 255, 0.04) !important;
+}
+
+.recharts-tooltip-wrapper {
+    outline: none !important;
+    z-index: 50;
+}
+
+.recharts-default-tooltip {
+    background: rgba(12, 12, 14, 0.95) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 12px !important;
+    backdrop-filter: blur(20px) !important;
+}
+
+.recharts-legend-wrapper {
+    padding-top: 12px !important;
+}
+
+.recharts-sector,
+.recharts-active-dot circle,
+.recharts-area-area,
+.recharts-area-curve,
+.recharts-bar-rectangle {
+    transition: all 0.3s ease !important;
+}
