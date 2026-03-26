@@ -47,6 +47,14 @@ class FetchResult:
     html: str
     status_code: int = 200
     load_time_ms: int = 0
+    lcp_ms: Optional[int] = None
+    cls: Optional[float] = None
+    total_kb: Optional[float] = None
+    html_kb: Optional[float] = None
+    js_kb: Optional[float] = None
+    css_kb: Optional[float] = None
+    images_kb: Optional[float] = None
+    attention: Optional[Dict[str, Any]] = None
 
     def __len__(self) -> int:
         return len(self.html)
@@ -155,6 +163,34 @@ async def fetch_page(
             progress_callback, "fetch:page", "browser context and page created", 20
         )
 
+        await page.add_init_script(
+            """
+            (() => {
+              window.__siteinsightVitals = { cls: 0, lcp: 0 };
+
+              try {
+                new PerformanceObserver((list) => {
+                  for (const entry of list.getEntries()) {
+                    if (!entry.hadRecentInput) {
+                      window.__siteinsightVitals.cls += entry.value || 0;
+                    }
+                  }
+                }).observe({ type: 'layout-shift', buffered: true });
+              } catch (e) {}
+
+              try {
+                new PerformanceObserver((list) => {
+                  const entries = list.getEntries();
+                  const last = entries[entries.length - 1];
+                  if (last) {
+                    window.__siteinsightVitals.lcp = Math.round(last.startTime || 0);
+                  }
+                }).observe({ type: 'largest-contentful-paint', buffered: true });
+              } catch (e) {}
+            })();
+            """
+        )
+
         # ── Navigate ──────────────────────────────────────────────────
         status_code = 200
         t_start = time.monotonic()
@@ -208,6 +244,206 @@ async def fetch_page(
         await page.wait_for_timeout(500)
 
         html: str = await page.content()
+        perf_metrics = await page.evaluate(
+            """
+            () => {
+              const vitals = window.__siteinsightVitals || { cls: 0, lcp: 0 };
+              const nav = performance.getEntriesByType('navigation')[0];
+              const resources = performance.getEntriesByType('resource');
+
+              const entrySize = (entry) => {
+                return (
+                  entry.transferSize ||
+                  entry.encodedBodySize ||
+                  entry.decodedBodySize ||
+                  0
+                );
+              };
+
+              let js = 0;
+              let css = 0;
+              let images = 0;
+
+              for (const entry of resources) {
+                const type = entry.initiatorType || '';
+                const size = entrySize(entry);
+                if (type === 'script') js += size;
+                else if (type === 'css' || entry.name.includes('.css')) css += size;
+                else if (type === 'img' || type === 'image') images += size;
+              }
+
+              const htmlBytes = nav
+                ? entrySize(nav)
+                : new TextEncoder().encode(document.documentElement.outerHTML).length;
+
+              const totalBytes = htmlBytes + js + css + images;
+
+              return {
+                lcp_ms: vitals.lcp ? Math.round(vitals.lcp) : null,
+                cls: Number((vitals.cls || 0).toFixed(3)),
+                html_kb: Number((htmlBytes / 1024).toFixed(1)),
+                js_kb: Number((js / 1024).toFixed(1)),
+                css_kb: Number((css / 1024).toFixed(1)),
+                images_kb: Number((images / 1024).toFixed(1)),
+                total_kb: Number((totalBytes / 1024).toFixed(1)),
+              };
+            }
+            """
+        )
+        attention_metrics = await page.evaluate(
+            """
+            () => {
+              const vw = window.innerWidth || document.documentElement.clientWidth || 1;
+              const vh = window.innerHeight || document.documentElement.clientHeight || 1;
+              const foldLimit = vh;
+              const scanLimit = vh * 1.6;
+
+              const weights = {
+                h1: 1.0,
+                h2: 0.82,
+                h3: 0.68,
+                button: 0.9,
+                a: 0.72,
+                img: 0.78,
+                video: 0.8,
+                form: 0.62,
+                input: 0.56,
+              };
+
+              const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+              const isVisible = (el, rect) => {
+                const style = window.getComputedStyle(el);
+                return (
+                  rect.width >= 28 &&
+                  rect.height >= 18 &&
+                  rect.bottom > 0 &&
+                  rect.right > 0 &&
+                  rect.left < vw &&
+                  rect.top < vh * 2 &&
+                  style.visibility !== "hidden" &&
+                  style.display !== "none" &&
+                  parseFloat(style.opacity || "1") > 0.05
+                );
+              };
+
+              const regionFromRect = (rect) => {
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const horizontal = cx < vw * 0.33 ? "left" : cx > vw * 0.66 ? "right" : "center";
+                const vertical = cy < vh * 0.4 ? "upper" : cy > vh * 0.75 ? "lower" : "middle";
+                return `${vertical}-${horizontal}`;
+              };
+
+              const looksLikeConsentUi = (text, el, rect) => {
+                const haystack = `${text} ${el.id || ""} ${el.className || ""}`.toLowerCase();
+                const keywords = [
+                  "cookie",
+                  "consent",
+                  "privacy",
+                  "gdpr",
+                  "accept all",
+                  "accept",
+                  "reject",
+                  "preferences",
+                  "customize",
+                ];
+                const fixedLike = ["fixed", "sticky"].includes(window.getComputedStyle(el).position);
+                const nearBottom = rect.top > vh * 0.55;
+                return keywords.some((keyword) => haystack.includes(keyword)) && (fixedLike || nearBottom);
+              };
+
+              const normalizeLabel = (el, tag) => {
+                const text = (
+                  el.innerText ||
+                  el.getAttribute("aria-label") ||
+                  el.getAttribute("alt") ||
+                  el.getAttribute("title") ||
+                  ""
+                )
+                  .replace(/\\s+/g, " ")
+                  .trim();
+
+                if (text.length >= 2) return text.slice(0, 60);
+                if (tag === "a") return "Link";
+                if (tag === "img") return "Image";
+                if (tag === "button") return "Button";
+                return tag.toUpperCase();
+              };
+
+              const candidates = [];
+              const selector = "h1, h2, h3, button, a, img, video, form, input, [role='button']";
+
+              for (const el of document.querySelectorAll(selector)) {
+                const rect = el.getBoundingClientRect();
+                if (!isVisible(el, rect)) continue;
+
+                const tag = (el.tagName || "").toLowerCase();
+                const role = (el.getAttribute("role") || "").toLowerCase();
+                const type = (el.getAttribute("type") || "").toLowerCase();
+                const kind = role === "button" ? "button" : tag;
+                const label = normalizeLabel(el, kind);
+                const baseWeight = weights[kind] || 0.5;
+                const areaRatio = clamp((rect.width * rect.height) / (vw * vh), 0, 0.45);
+                const areaBoost = Math.sqrt(areaRatio) * 0.42;
+                const topBias = clamp(1 - Math.max(rect.top, 0) / scanLimit, 0, 1) * 0.46;
+                const centerOffset = Math.abs((rect.left + rect.width / 2) - vw / 2) / (vw / 2);
+                const centerBonus = (1 - clamp(centerOffset, 0, 1)) * 0.16;
+                const foldBonus = rect.top < foldLimit ? 0.16 : 0;
+
+                let score = baseWeight + areaBoost + topBias + centerBonus + foldBonus;
+
+                if (tag === "a" && rect.width < 110 && rect.height < 36) score -= 0.12;
+                if (tag === "input" && !["submit", "button"].includes(type)) score -= 0.08;
+                if (tag === "img" && rect.width < 120) score -= 0.06;
+                if (tag === "a" && label === "Link") score -= 0.18;
+                if (looksLikeConsentUi(label, el, rect)) score -= 0.28;
+
+                score = clamp(score, 0.05, 1.0);
+
+                candidates.push({
+                  type: kind,
+                  label,
+                  intensity: Number(score.toFixed(3)),
+                  x: Number(clamp(rect.left / vw, 0, 1).toFixed(4)),
+                  y: Number(clamp(rect.top / vh, 0, 1.8).toFixed(4)),
+                  width: Number(clamp(rect.width / vw, 0.04, 1).toFixed(4)),
+                  height: Number(clamp(rect.height / vh, 0.03, 1).toFixed(4)),
+                  above_fold: rect.top < foldLimit,
+                  region: regionFromRect(rect),
+                });
+              }
+
+              candidates.sort((a, b) => b.intensity - a.intensity);
+              const zones = candidates.slice(0, 8).map((zone, index) => ({
+                ...zone,
+                id: `zone-${index + 1}`,
+                level: zone.intensity >= 0.95 ? "high" : zone.intensity >= 0.72 ? "medium" : "low",
+              }));
+
+              const aboveFoldShare = zones.length
+                ? Math.round((zones.filter((zone) => zone.above_fold).length / zones.length) * 100)
+                : 0;
+
+              const regionCounts = zones.reduce((acc, zone) => {
+                acc[zone.region] = (acc[zone.region] || 0) + zone.intensity;
+                return acc;
+              }, {});
+
+              const dominantRegion = Object.entries(regionCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+              return {
+                viewport: { width: vw, height: vh },
+                zones,
+                stats: {
+                  above_fold_share: aboveFoldShare,
+                  scanned_elements: candidates.length,
+                  dominant_region: dominantRegion,
+                  strongest_zone: zones[0]?.label || null,
+                },
+              };
+            }
+            """
+        )
         await _emit_progress(
             progress_callback, "fetch:finalize", "captured final page HTML", 38
         )
@@ -221,6 +457,14 @@ async def fetch_page(
             html=html,
             status_code=status_code,
             load_time_ms=load_time_ms,
+            lcp_ms=perf_metrics.get("lcp_ms"),
+            cls=perf_metrics.get("cls"),
+            total_kb=perf_metrics.get("total_kb"),
+            html_kb=perf_metrics.get("html_kb"),
+            js_kb=perf_metrics.get("js_kb"),
+            css_kb=perf_metrics.get("css_kb"),
+            images_kb=perf_metrics.get("images_kb"),
+            attention=attention_metrics,
         )
 
     finally:

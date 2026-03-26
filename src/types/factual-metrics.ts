@@ -25,6 +25,13 @@ export interface FactualMeta {
 
 export interface FactualAdvancedDiagnostics {
   load_time_ms?: number;
+  lcp_ms?: number;
+  cls?: number;
+  total_kb?: number;
+  html_kb?: number;
+  js_kb?: number;
+  css_kb?: number;
+  images_kb?: number;
   status_code?: number;
   dom_elements?: number;
   inline_styles?: number;

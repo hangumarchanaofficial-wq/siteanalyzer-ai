@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[str, str, Optional[int]], Awaitable[None]]
 
+
 def _log_stage(stage: str, detail: str) -> None:
     logger.info("[stage:%s] %s", stage, detail)
 
@@ -67,13 +68,35 @@ async def analyse_url(
     await _emit_progress(progress_callback, "extract:start", f"starting extraction for {url}", 5)
 
     await _emit_progress(progress_callback, "extract:fetch", "rendering page with Playwright", 10)
-    html = await fetch_page(url, progress_callback=progress_callback)
-    await _emit_progress(progress_callback, "extract:fetch_done", f"fetched {len(html)} bytes of rendered HTML", 45)
+    fetch_result = await fetch_page(url, progress_callback=progress_callback)
+    await _emit_progress(
+        progress_callback,
+        "extract:fetch_done",
+        f"fetched {len(fetch_result)} bytes of rendered HTML "
+        f"(status={fetch_result.status_code}, load={fetch_result.load_time_ms}ms)",
+        45,
+    )
 
     await _emit_progress(progress_callback, "extract:parse", "parsing rendered HTML into DOM", 55)
-    dom = parse_dom(html)
+    dom = parse_dom(fetch_result.html)
+
     await _emit_progress(progress_callback, "extract:metrics", "extracting structured metrics from DOM", 70)
-    snapshot = extract_metrics(dom, url)
+
+    # Pass fetcher metadata so extractor can include load_time_ms and status_code.
+    fetch_meta = {
+        "status_code": fetch_result.status_code,
+        "load_time_ms": fetch_result.load_time_ms,
+        "lcp_ms": fetch_result.lcp_ms,
+        "cls": fetch_result.cls,
+        "total_kb": fetch_result.total_kb,
+        "html_kb": fetch_result.html_kb,
+        "js_kb": fetch_result.js_kb,
+        "css_kb": fetch_result.css_kb,
+        "images_kb": fetch_result.images_kb,
+    }
+    snapshot = extract_metrics(dom, url, fetch_meta=fetch_meta)
+    if fetch_result.attention:
+        snapshot["attention"] = fetch_result.attention
 
     await _emit_progress(progress_callback, "extract:done", "extraction complete", 100)
     return snapshot
@@ -110,23 +133,46 @@ async def full_audit(
 
     await _emit_progress(progress_callback, "audit:start", f"starting full audit for {url}", 2)
 
-    # Phase 1: Extraction.
+    # Phase 1: Fetch.
     await _emit_progress(progress_callback, "audit:fetch", "rendering target page", 8)
-    html = await fetch_page(url, progress_callback=progress_callback)
-    await _emit_progress(progress_callback, "audit:fetch_done", f"fetched {len(html)} bytes of rendered HTML", 38)
+    fetch_result = await fetch_page(url, progress_callback=progress_callback)
+    await _emit_progress(
+        progress_callback,
+        "audit:fetch_done",
+        f"fetched {len(fetch_result)} bytes of rendered HTML "
+        f"(status={fetch_result.status_code}, load={fetch_result.load_time_ms}ms)",
+        38,
+    )
 
+    # Phase 2: Parse + Extract.
     await _emit_progress(progress_callback, "audit:parse", "parsing rendered HTML", 45)
-    dom = parse_dom(html)
+    dom = parse_dom(fetch_result.html)
+
     await _emit_progress(progress_callback, "audit:metrics", "extracting page metrics and content signals", 55)
-    snapshot = extract_metrics(dom, url)
+
+    fetch_meta = {
+        "status_code": fetch_result.status_code,
+        "load_time_ms": fetch_result.load_time_ms,
+        "lcp_ms": fetch_result.lcp_ms,
+        "cls": fetch_result.cls,
+        "total_kb": fetch_result.total_kb,
+        "html_kb": fetch_result.html_kb,
+        "js_kb": fetch_result.js_kb,
+        "css_kb": fetch_result.css_kb,
+        "images_kb": fetch_result.images_kb,
+    }
+    snapshot = extract_metrics(dom, url, fetch_meta=fetch_meta)
+    if fetch_result.attention:
+        snapshot["attention"] = fetch_result.attention
+
     await _emit_progress(progress_callback, "audit:ai_prepare", "extraction complete, preparing AI analysis", 62)
 
-    # Phase 2: AI analysis.
+    # Phase 3: AI analysis.
     await _emit_progress(progress_callback, "audit:ai_start", f"running AI analysis with backend={ai_backend}", 68)
     ai_report = await analyse_with_ai(snapshot, backend=ai_backend, progress_callback=progress_callback)
     await _emit_progress(progress_callback, "audit:ai_done", "AI analysis complete", 92)
 
-    # Phase 3: Merge.
+    # Phase 4: Merge.
     snapshot["ai_report"] = ai_report
 
     await _emit_progress(progress_callback, "audit:done", "full audit complete", 100)

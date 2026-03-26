@@ -15,13 +15,16 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import logging
+import os
 import uuid
 from typing import Any, Dict, Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
+import uvicorn
 
+from backend.ai_config import OPENROUTER_CFG
 from backend.engine import analyse_url, full_audit
 
 logging.basicConfig(
@@ -193,4 +196,22 @@ async def audit_status_endpoint(job_id: str) -> Dict[str, Any]:
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "version": "2.0.0"}
+    default_ai_backend = "ollama" if os.getenv("DEFAULT_AI_BACKEND") == "ollama" else "openrouter"
+    return {
+        "status": "ok",
+        "version": "2.0.0",
+        "ai": {
+            "default_backend": default_ai_backend,
+            "openrouter_configured": bool(os.getenv("OPENROUTER_API_KEY") or OPENROUTER_CFG.api_key),
+            "openrouter_model": OPENROUTER_CFG.model,
+        },
+    }
+
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "backend.server:app",
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", "8000")),
+        log_level=os.getenv("LOG_LEVEL", "info"),
+    )

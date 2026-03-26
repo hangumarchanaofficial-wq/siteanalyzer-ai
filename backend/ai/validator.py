@@ -52,6 +52,26 @@ _METRIC_REFERENCE_ALIASES = {
     "image_count": "images",
     "images.total": "images",
     "alt_missing_percent": "missing_alt_percent",
+    "load_time": "advanced.load_time_ms",
+    "loadtime": "advanced.load_time_ms",
+    "load_time_ms": "advanced.load_time_ms",
+    "status_code": "advanced.status_code",
+    "dom_elements": "advanced.dom_elements",
+    "dom_count": "advanced.dom_elements",
+    "inline_styles": "advanced.inline_styles",
+    "external_stylesheets": "advanced.external_stylesheets",
+    "stylesheets": "advanced.external_stylesheets",
+    "external_scripts": "advanced.external_scripts",
+    "scripts": "advanced.external_scripts",
+    "forms": "advanced.forms",
+    "videos": "advanced.videos",
+    "aria_roles": "advanced.aria_roles",
+    "social_links": "advanced.social_links",
+    "https": "advanced.https",
+    "favicon": "advanced.favicon",
+    "html_lang": "advanced.html_lang",
+    "unlabelled_inputs": "advanced.unlabelled_inputs",
+    "unlabeled_inputs": "advanced.unlabelled_inputs",
 }
 
 
@@ -160,6 +180,8 @@ def _validate_report(
         "cta_usage",
         "content_depth",
         "ux_concerns",
+        "performance_health",
+        "accessibility_audit",
     }
 
     insights = report.get("insights")

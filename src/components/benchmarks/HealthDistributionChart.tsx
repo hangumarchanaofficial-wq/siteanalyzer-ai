@@ -4,8 +4,13 @@ import { useEffect, useState, useCallback } from "react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { ChartCard } from "./ChartCard";
 import { healthData } from "@/lib/benchmark-data";
+import { HealthSegment } from "@/types/benchmark";
 
-export function HealthDistributionChart() {
+interface HealthDistributionChartProps {
+  data?: HealthSegment[];
+}
+
+export function HealthDistributionChart({ data = healthData }: HealthDistributionChartProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -21,7 +26,7 @@ export function HealthDistributionChart() {
     setActiveIndex(null);
   }, []);
 
-  const total = healthData.reduce((sum, d) => sum + d.value, 0);
+  const total = data.reduce((sum, d) => sum + d.value, 0);
 
   return (
     <ChartCard
@@ -35,7 +40,7 @@ export function HealthDistributionChart() {
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <defs>
-                {healthData.map((entry, i) => (
+                {data.map((entry, i) => (
                   <filter
                     key={`glow-${i}`}
                     id={`pieGlow-${i}`}
@@ -56,7 +61,7 @@ export function HealthDistributionChart() {
               </defs>
 
               <Pie
-                data={healthData}
+                data={data}
                 cx="50%"
                 cy="50%"
                 innerRadius={65}
@@ -69,7 +74,7 @@ export function HealthDistributionChart() {
                 animationBegin={200}
                 animationDuration={800}
               >
-                {healthData.map((entry, index) => (
+                {data.map((entry, index) => (
                   <Cell
                     key={`cell-${index}`}
                     fill={entry.color}
@@ -96,12 +101,12 @@ export function HealthDistributionChart() {
               <>
                 <span
                   className="text-2xl font-bold transition-colors duration-200"
-                  style={{ color: healthData[activeIndex].color }}
+                  style={{ color: data[activeIndex].color }}
                 >
-                  {healthData[activeIndex].value}%
+                  {data[activeIndex].value}%
                 </span>
                 <span className="text-[11px] text-white/40 mt-0.5">
-                  {healthData[activeIndex].name}
+                  {data[activeIndex].name}
                 </span>
               </>
             ) : (
@@ -117,7 +122,7 @@ export function HealthDistributionChart() {
 
         {/* Legend */}
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 mt-2 w-full max-w-[280px]">
-          {healthData.map((segment, i) => (
+          {data.map((segment, i) => (
             <div
               key={segment.name}
               className={`flex items-center gap-2.5 cursor-pointer transition-opacity duration-200 ${

@@ -40,6 +40,18 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
+.snowflake {
+    position: absolute;
+    top: -8%;
+    border-radius: 999px;
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.92) 0%, rgba(167, 239, 255, 0.55) 70%, transparent 100%);
+    box-shadow:
+        0 0 8px rgba(167, 239, 255, 0.16),
+        0 0 16px rgba(255, 255, 255, 0.06);
+    opacity: var(--snow-opacity, 0.35);
+    animation: snowfall linear infinite;
+}
+
 @layer utilities {
     .glass {
         background: rgba(18, 18, 20, 0.72);
@@ -116,6 +128,23 @@ body {
     to {
         opacity: 1;
         transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes snowfall {
+    0% {
+        transform: translate3d(0, -8vh, 0) scale(0.9);
+        opacity: 0;
+    }
+    12% {
+        opacity: var(--snow-opacity, 0.35);
+    }
+    50% {
+        transform: translate3d(var(--snow-drift, 18px), 52vh, 0) scale(1);
+    }
+    100% {
+        transform: translate3d(calc(var(--snow-drift, 18px) * -0.55), 112vh, 0) scale(0.92);
+        opacity: 0;
     }
 }
 

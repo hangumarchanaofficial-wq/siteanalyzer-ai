@@ -1,10 +1,5 @@
-// ─────────────────────────────────────────────────────────────────────
-// extended-mock-data.ts — Realistic mock payloads for the new cards.
-// ─────────────────────────────────────────────────────────────────────
-
 import { ExtendedMetricsData } from "@/types/extended-metrics";
 
-/** Full payload — all four sections populated. */
 export const mockExtendedMetrics: ExtendedMetricsData = {
   performance: {
     load_time_ms: 10130,
@@ -29,7 +24,14 @@ export const mockExtendedMetrics: ExtendedMetricsData = {
   },
 };
 
-/** Partial payload — only performance and accessibility. */
 export const mockExtendedMetricsPartial: ExtendedMetricsData = {
   performance: {
-    load_time_ms: 1
+    load_time_ms: 1840,
+    lcp_ms: 1320,
+    cls: 0.01,
+  },
+  accessibility: {
+    unlabelled_inputs: 1,
+    aria_roles: 12,
+  },
+};

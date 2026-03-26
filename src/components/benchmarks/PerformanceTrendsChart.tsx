@@ -13,6 +13,7 @@ import {
 import { ChartCard } from "./ChartCard";
 import { CustomChartTooltip } from "./CustomTooltip";
 import { trendData } from "@/lib/benchmark-data";
+import { TrendDataPoint } from "@/types/benchmark";
 
 const seriesConfig = [
   {
@@ -41,7 +42,11 @@ const seriesConfig = [
   },
 ];
 
-export function PerformanceTrendsChart() {
+interface PerformanceTrendsChartProps {
+  data?: TrendDataPoint[];
+}
+
+export function PerformanceTrendsChart({ data = trendData }: PerformanceTrendsChartProps) {
   const [activeSeries, setActiveSeries] = useState<Set<string>>(
     new Set(seriesConfig.map((s) => s.key))
   );
@@ -102,7 +107,7 @@ export function PerformanceTrendsChart() {
         {mounted ? (
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
-            data={trendData}
+            data={data}
             margin={{ top: 8, right: 8, left: -20, bottom: 0 }}
           >
             <defs>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, type CSSProperties } from "react";
 import { Navbar } from "@/components/Navbar";
 import { HeroSection } from "@/components/HeroSection";
 import { IndustryBenchmarks } from "@/components/benchmarks/IndustryBenchmarks";
@@ -11,6 +11,32 @@ import { ErrorState } from "@/components/ErrorState";
 import { AuditResult, AuditState } from "@/types/audit";
 import { AuditJobEvent } from "@/lib/schemas";
 import { getAuditJobStatus, startAuditJob } from "@/lib/ai-analyze";
+
+const snowflakes = [
+  { left: "4%", size: 3, duration: 20, delay: -2, drift: 18, opacity: 0.32 },
+  { left: "11%", size: 5, duration: 24, delay: -8, drift: 26, opacity: 0.46 },
+  { left: "15%", size: 2, duration: 16, delay: -10, drift: 12, opacity: 0.22 },
+  { left: "18%", size: 2, duration: 18, delay: -4, drift: 14, opacity: 0.28 },
+  { left: "24%", size: 4, duration: 26, delay: -11, drift: 22, opacity: 0.38 },
+  { left: "27%", size: 3, duration: 19, delay: -1, drift: 16, opacity: 0.3 },
+  { left: "31%", size: 3, duration: 21, delay: -6, drift: 20, opacity: 0.34 },
+  { left: "35%", size: 4, duration: 30, delay: -16, drift: 28, opacity: 0.36 },
+  { left: "39%", size: 5, duration: 29, delay: -14, drift: 28, opacity: 0.44 },
+  { left: "47%", size: 2, duration: 17, delay: -9, drift: 12, opacity: 0.24 },
+  { left: "50%", size: 3, duration: 20, delay: -6, drift: 18, opacity: 0.29 },
+  { left: "54%", size: 4, duration: 23, delay: -3, drift: 18, opacity: 0.35 },
+  { left: "58%", size: 2, duration: 15, delay: -12, drift: 10, opacity: 0.2 },
+  { left: "62%", size: 3, duration: 27, delay: -12, drift: 24, opacity: 0.33 },
+  { left: "68%", size: 5, duration: 31, delay: -18, drift: 30, opacity: 0.42 },
+  { left: "71%", size: 4, duration: 22, delay: -4, drift: 19, opacity: 0.34 },
+  { left: "74%", size: 2, duration: 19, delay: -5, drift: 14, opacity: 0.26 },
+  { left: "78%", size: 3, duration: 24, delay: -14, drift: 21, opacity: 0.32 },
+  { left: "81%", size: 4, duration: 25, delay: -15, drift: 20, opacity: 0.37 },
+  { left: "85%", size: 2, duration: 18, delay: -7, drift: 13, opacity: 0.24 },
+  { left: "88%", size: 3, duration: 22, delay: -7, drift: 16, opacity: 0.31 },
+  { left: "94%", size: 5, duration: 28, delay: -13, drift: 24, opacity: 0.4 },
+  { left: "97%", size: 3, duration: 21, delay: -9, drift: 17, opacity: 0.28 },
+];
 
 export default function Home() {
   const [auditState, setAuditState] = useState<AuditState>("idle");
@@ -127,6 +153,25 @@ export default function Home() {
         <div className="absolute inset-0 bg-surface-0" />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-gradient-radial from-accent-blue/[0.07] via-accent-violet/[0.03] to-transparent" />
         <div className="absolute bottom-0 right-0 w-[800px] h-[400px] bg-gradient-radial from-accent-violet/[0.05] to-transparent" />
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          {snowflakes.map((flake, index) => (
+            <span
+              key={index}
+              className="snowflake"
+              style={
+                {
+                  left: flake.left,
+                  width: `${flake.size}px`,
+                  height: `${flake.size}px`,
+                  animationDuration: `${flake.duration}s`,
+                  animationDelay: `${flake.delay}s`,
+                  ["--snow-drift" as string]: `${flake.drift}px`,
+                  ["--snow-opacity" as string]: flake.opacity,
+                } as CSSProperties
+              }
+            />
+          ))}
+        </div>
         {/* Subtle grid pattern */}
         <div
           className="absolute inset-0 opacity-[0.02]"
@@ -175,7 +220,7 @@ export default function Home() {
         {/* ========================================= */}
         {/* INDUSTRY BENCHMARKS — always visible      */}
         {/* ========================================= */}
-        <IndustryBenchmarks />
+        <IndustryBenchmarks result={auditResult} />
 
         {/* Footer */}
         <footer className="relative z-10 border-t border-border-subtle">
@@ -184,10 +229,10 @@ export default function Home() {
               <div>
                 <div className="flex items-center gap-2 mb-3">
                   <div className="w-7 h-7 rounded-lg bg-gradient-accent flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">S</span>
+                    <span className="text-white text-xs font-bold">L</span>
                   </div>
                   <span className="text-sm font-semibold text-white/80">
-                    SiteInsight AI
+                    Lunaria
                   </span>
                 </div>
                 <p className="text-xs text-white/40">

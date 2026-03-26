@@ -28,12 +28,12 @@ from typing import Any, Dict, List, Tuple
 # ──────────────────────────────────────────────────────────────────────
 
 _MAX_EXCERPT_CHARS = 400
-_MAX_HEADING_TEXTS = 8       # Keep at most N heading texts.
-_MAX_CTA_TEXTS = 6           # Keep at most N CTA labels.
+_MAX_HEADING_TEXTS = 8
+_MAX_CTA_TEXTS = 6
 
 
 # ──────────────────────────────────────────────────────────────────────
-#  Few-shot exemplar
+#  Few-shot exemplar (UPDATED with advanced diagnostics)
 # ──────────────────────────────────────────────────────────────────────
 
 _EXAMPLE_INPUT = textwrap.dedent("""\
@@ -50,6 +50,22 @@ _EXAMPLE_INPUT = textwrap.dedent("""\
     - meta.title: "Acme SaaS — Pricing Plans"
     - meta.description: null
 
+    ADVANCED DIAGNOSTICS:
+    - load_time_ms: 3200
+    - status_code: 200
+    - dom_elements: 845
+    - inline_styles: 12
+    - external_stylesheets: 3
+    - external_scripts: 8
+    - forms: 0
+    - videos: 0
+    - aria_roles: 4
+    - social_links: 3
+    - https: true
+    - favicon: true
+    - html_lang: "en"
+    - unlabelled_inputs: 0
+
     CONTENT SIGNALS:
     - H2 texts: "Simple Pricing", "Enterprise", "FAQ"
     - CTA texts: "Start Free Trial", "Contact Sales"
@@ -62,7 +78,8 @@ _EXAMPLE_OUTPUT = json.dumps({
         "3 H2s) but is thin on content at only 410 words. Two CTAs are "
         "present, though 40% of images lack alt text, and the meta "
         "description is completely missing — both significant issues for "
-        "SEO and accessibility."
+        "SEO and accessibility. Page loads in 3.2s which is above the "
+        "recommended 2.5s threshold."
     ),
     "insights": {
         "seo_structure": (
@@ -94,6 +111,18 @@ _EXAMPLE_OUTPUT = json.dumps({
             "inaccessible to screen readers. With only 1 external link "
             "the page avoids sending users away, which is correct for "
             "a pricing page."
+        ),
+        "performance_health": (
+            "Page load time of 3200ms exceeds the 2500ms threshold for "
+            "good user experience. 8 external scripts contribute to load "
+            "weight. 845 DOM elements is within acceptable limits. "
+            "The page is served over HTTPS with a valid favicon."
+        ),
+        "accessibility_audit": (
+            "Only 4 ARIA roles detected across 845 DOM elements, suggesting "
+            "limited semantic markup. 40% of images lack alt text, violating "
+            "WCAG 2.1 Level A. No unlabelled inputs found, which is good. "
+            "html_lang is set to 'en', supporting screen reader language detection."
         ),
     },
     "issues": [
@@ -130,6 +159,23 @@ _EXAMPLE_OUTPUT = json.dumps({
             ),
         },
         {
+            "category": "ux",
+            "severity": "medium",
+            "metric_reference": "advanced.load_time_ms",
+            "issue": (
+                "Page load time of 3200ms exceeds the 2500ms good-experience threshold."
+            ),
+            "why_it_matters": (
+                "Every 100ms of added load time reduces conversion by ~1%. "
+                "3.2s puts this page in the 'needs improvement' range for "
+                "Core Web Vitals."
+            ),
+            "suggested_fix": (
+                "Reduce the 8 external scripts via bundling or deferred loading. "
+                "Consider lazy-loading below-fold images."
+            ),
+        },
+        {
             "category": "content",
             "severity": "medium",
             "metric_reference": "word_count",
@@ -152,14 +198,14 @@ _EXAMPLE_OUTPUT = json.dumps({
 
 
 # ──────────────────────────────────────────────────────────────────────
-#  System prompt
+#  System prompt (UPDATED — now includes performance + accessibility)
 # ──────────────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = textwrap.dedent("""\
     You are an expert website auditor employed by a digital agency.
-    You will receive structured metrics and content signals extracted
-    from a single webpage.  Your task is to produce a professional
-    audit report as a JSON object.
+    You will receive structured metrics, advanced diagnostics, and
+    content signals extracted from a single webpage.  Your task is to
+    produce a professional audit report as a JSON object.
 
     ═══ HARD RULES ═══
 
@@ -172,11 +218,15 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     4. Return a maximum of 7 issues.  Prioritise by severity.
     5. Every issue MUST include a "metric_reference" field that names
        the specific metric it relates to (e.g. "missing_alt_percent",
-       "meta.description", "word_count").
+       "meta.description", "word_count", "advanced.load_time_ms",
+       "advanced.unlabelled_inputs").
     6. "category" must be one of: seo, ux, content, accessibility.
     7. "severity" must be one of: low, medium, high.
     8. Do not produce generic advice.  Every recommendation must be
        specific to the actual numbers and content provided.
+    9. The ADVANCED DIAGNOSTICS section contains performance and
+       technical signals.  Use these to assess page health, load
+       performance, and accessibility compliance.
 
     ═══ OUTPUT SCHEMA ═══
 
@@ -187,7 +237,9 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
         "messaging_clarity": "<analysis of headings, CTA copy, value prop>",
         "cta_usage": "<analysis of CTA count, placement, copy quality>",
         "content_depth": "<analysis of word count, content coverage>",
-        "ux_concerns": "<analysis of accessibility, images, load signals>"
+        "ux_concerns": "<analysis of UX, images, navigation signals>",
+        "performance_health": "<analysis of load_time_ms, scripts, stylesheets, DOM size>",
+        "accessibility_audit": "<analysis of aria_roles, unlabelled_inputs, alt text, html_lang>"
       },
       "issues": [
         {
@@ -220,12 +272,10 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
 # ──────────────────────────────────────────────────────────────────────
 
 def _truncate_list(items: List[str], limit: int) -> List[str]:
-    """Keep the first *limit* items."""
     return items[:limit]
 
 
 def _truncate_text(text: str | None, limit: int) -> str:
-    """Truncate to *limit* characters, trimming to last full word."""
     if not text:
         return ""
     if len(text) <= limit:
@@ -238,12 +288,36 @@ def _truncate_text(text: str | None, limit: int) -> str:
 
 
 def _safe_str(value: Any) -> str:
-    """Render a value for the prompt; None → 'null'."""
     if value is None:
         return "null"
     if isinstance(value, str):
         return f'"{value}"' if len(value) < 200 else f'"{value[:200]}…"'
     return str(value)
+
+
+def _format_advanced(advanced: Dict[str, Any]) -> str:
+    """Format the advanced diagnostics dict into prompt-friendly lines."""
+    if not advanced:
+        return "    (no advanced diagnostics available)"
+
+    lines = []
+    key_order = [
+        "load_time_ms", "status_code", "dom_elements", "inline_styles",
+        "external_stylesheets", "external_scripts", "forms", "videos",
+        "aria_roles", "social_links", "https", "favicon", "html_lang",
+        "unlabelled_inputs",
+    ]
+    for key in key_order:
+        val = advanced.get(key)
+        if val is not None:
+            if isinstance(val, bool):
+                lines.append(f"    - {key}: {'true' if val else 'false'}")
+            elif isinstance(val, str):
+                lines.append(f"    - {key}: \"{val}\"")
+            else:
+                lines.append(f"    - {key}: {val}")
+
+    return "\n".join(lines) if lines else "    (no advanced diagnostics available)"
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -262,7 +336,7 @@ def build_prompts(snapshot: Dict[str, Any]) -> Tuple[str, str]:
             {
               "url": str,
               "page_type_hint": str,
-              "metrics": { ... },
+              "metrics": { ..., "advanced": { ... } },
               "content_signals": { ... }
             }
 
@@ -280,6 +354,7 @@ def build_prompts(snapshot: Dict[str, Any]) -> Tuple[str, str]:
     headings = metrics.get("headings", {})
     links = metrics.get("links", {})
     meta = metrics.get("meta", {})
+    advanced = metrics.get("advanced", {})
 
     # ── Unpack content signals with truncation ────────────────────────
     h2_texts = _truncate_list(signals.get("h2_texts", []), _MAX_HEADING_TEXTS)
@@ -290,6 +365,8 @@ def build_prompts(snapshot: Dict[str, Any]) -> Tuple[str, str]:
     )
 
     # ── Build the user prompt ─────────────────────────────────────────
+    advanced_block = _format_advanced(advanced)
+
     user_prompt = textwrap.dedent(f"""\
         URL: {url}
         Page type: {page_type}
@@ -299,10 +376,13 @@ def build_prompts(snapshot: Dict[str, Any]) -> Tuple[str, str]:
         - headings: h1={headings.get("h1", 0)}, h2={headings.get("h2", 0)}, h3={headings.get("h3", 0)}
         - cta_count: {metrics.get("cta_count", "unknown")}
         - links: internal={links.get("internal", 0)}, external={links.get("external", 0)}
-        - images: {metrics.get("images", "unknown")}
+        - images: {metrics.get("image_count", "unknown")}
         - missing_alt_percent: {metrics.get("missing_alt_percent", "unknown")}
         - meta.title: {_safe_str(meta.get("title"))}
         - meta.description: {_safe_str(meta.get("description"))}
+
+        ADVANCED DIAGNOSTICS:
+{advanced_block}
 
         CONTENT SIGNALS:
         - H2 texts: {json.dumps(h2_texts, ensure_ascii=False) if h2_texts else "none"}

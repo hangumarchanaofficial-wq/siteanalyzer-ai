@@ -1,5 +1,6 @@
 "use client";
 
+import clsx from "clsx";
 import { ExtendedMetricsData } from "@/types/extended-metrics";
 import { PerformanceCard } from "./PerformanceCard";
 import { PageSizeCard } from "./PageSizeCard";
@@ -11,37 +12,42 @@ interface ExtendedMetricsRowProps {
   className?: string;
 }
 
-/**
- * Grid orchestrator for the four new metric cards.
- *
- * Renders only the cards whose data sections exist — the grid
- * adapts from 1 to 4 columns based on how many are present.
- *
- * Grid breakpoints mirror the existing MetricsGrid:
- *   mobile → 1 col
- *   sm     → 2 col
- *   lg     → 4 col  (or fewer, auto-filled)
- */
 export function ExtendedMetricsRow({
   data,
   className = "",
 }: ExtendedMetricsRowProps) {
-  const hasPerf = !!data.performance;
-  const hasSize = !!data.page_size;
-  const hasRes = !!data.resources;
-  const hasA11y = !!data.accessibility;
+  const cards = [
+    data.performance ? <PerformanceCard key="performance" data={data.performance} /> : null,
+    data.page_size ? <PageSizeCard key="page-size" data={data.page_size} /> : null,
+    data.resources ? <ResourceBreakdownCard key="resources" data={data.resources} /> : null,
+    data.accessibility ? <AccessibilityCard key="accessibility" data={data.accessibility} /> : null,
+  ].filter(Boolean);
 
-  // Don't render anything if the entire section is empty.
-  if (!hasPerf && !hasSize && !hasRes && !hasA11y) return null;
+  if (cards.length === 0) return null;
+
+  const gridClassName =
+    cards.length === 1
+      ? "grid-cols-1"
+      : cards.length === 2
+        ? "grid-cols-1 sm:grid-cols-2"
+        : cards.length === 3
+          ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+          : "grid-cols-1 md:grid-cols-2 xl:grid-cols-4";
 
   return (
-    <div
-      className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 ${className}`}
-    >
-      {hasPerf && <PerformanceCard data={data.performance!} />}
-      {hasSize && <PageSizeCard data={data.page_size!} />}
-      {hasRes && <ResourceBreakdownCard data={data.resources!} />}
-      {hasA11y && <AccessibilityCard data={data.accessibility!} />}
+    <div className={`space-y-4 ${className}`}>
+      <div>
+        <h3 className="text-lg font-semibold text-white tracking-tight">
+          Extended Metrics
+        </h3>
+        <p className="mt-1 text-sm text-white/40">
+          Additional technical signals extracted from the rendered page and network lifecycle.
+        </p>
+      </div>
+
+      <div className={clsx("grid gap-4 auto-rows-fr", gridClassName)}>
+        {cards}
+      </div>
     </div>
   );
 }

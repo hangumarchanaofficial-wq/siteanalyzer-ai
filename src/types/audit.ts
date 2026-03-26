@@ -1,3 +1,5 @@
+import { FactualAdvancedDiagnostics } from "@/types/factual-metrics";
+
 export interface AuditMetrics {
     wordCount: number;
     headings: {
@@ -40,7 +42,7 @@ export interface AuditInsight {
         | "ux"
         | "accessibility";
     title: string;
-    score: number; // 0-100
+    score: number;
     summary: string;
     details: string[];
     icon: string;
@@ -56,11 +58,41 @@ export interface AuditRecommendation {
     impact: string;
 }
 
+export interface AuditAttentionZone {
+    id: string;
+    type: string;
+    label: string;
+    intensity: number;
+    level: "high" | "medium" | "low";
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    aboveFold: boolean;
+    region: string;
+}
+
+export interface AuditAttentionModel {
+    viewport: {
+        width: number;
+        height: number;
+    };
+    zones: AuditAttentionZone[];
+    stats: {
+        aboveFoldShare: number;
+        scannedElements: number;
+        dominantRegion: string | null;
+        strongestZone: string | null;
+    };
+}
+
 export interface AuditResult {
     url: string;
     timestamp: string;
     overallScore: number;
     metrics: AuditMetrics;
+    advanced?: FactualAdvancedDiagnostics;
+    attention?: AuditAttentionModel;
     insights: AuditInsight[];
     recommendations: AuditRecommendation[];
     status: "live" | "cached";

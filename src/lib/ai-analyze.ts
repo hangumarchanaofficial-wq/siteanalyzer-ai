@@ -2,6 +2,7 @@ import { AuditInsight, AuditRecommendation, AuditResult } from "@/types/audit";
 import {
     AuditJobEvent,
     AuditJobStatusResponse,
+    BackendAdvancedDiagnostics,
     BackendAiReport,
     BackendAuditIssue,
     BackendAuditResponse,
@@ -24,6 +25,16 @@ const CATEGORY_META: Record<
         title: "Accessibility",
         category: "accessibility",
         icon: "eye",
+    },
+    performance_health: {
+        title: "Performance",
+        category: "ux",
+        icon: "zap",
+    },
+    accessibility_audit: {
+        title: "Accessibility Audit",
+        category: "accessibility",
+        icon: "shield-check",
     },
 };
 
@@ -65,6 +76,8 @@ function calculateScores(data: BackendAuditResponse) {
         {}
     );
 
+    const adv = data.metrics.advanced;
+
     const seoBase =
         88 -
         (data.metrics.meta.description ? 0 : 10) -
@@ -97,10 +110,29 @@ function calculateScores(data: BackendAuditResponse) {
     const accessibilityBase =
         88 -
         Math.round(data.metrics.missing_alt_percent / 3) -
+        (adv?.unlabelled_inputs ? Math.min(adv.unlabelled_inputs * 3, 15) : 0) -
         (issuesByCategory.accessibility ?? []).reduce(
             (sum, issue) => sum + severityPenalty(issue.severity),
             0
         );
+
+    // Performance score (NEW) — based on advanced diagnostics.
+    let performanceBase = 85;
+    if (adv) {
+        if (adv.load_time_ms !== undefined) {
+            if (adv.load_time_ms > 5000) performanceBase -= 20;
+            else if (adv.load_time_ms > 2500) performanceBase -= 10;
+        }
+        if (adv.external_scripts !== undefined && adv.external_scripts > 15) {
+            performanceBase -= Math.min((adv.external_scripts - 15) * 1, 10);
+        }
+        if (adv.dom_elements !== undefined && adv.dom_elements > 3000) {
+            performanceBase -= 5;
+        }
+        if (adv.inline_styles !== undefined && adv.inline_styles > 50) {
+            performanceBase -= 5;
+        }
+    }
 
     return {
         seo: clampScore(seoBase),
@@ -109,6 +141,7 @@ function calculateScores(data: BackendAuditResponse) {
         content: clampScore(contentBase),
         ux: clampScore(uxBase),
         accessibility: clampScore(accessibilityBase),
+        performance: clampScore(performanceBase),
     };
 }
 
@@ -121,7 +154,9 @@ function mapInsights(data: BackendAuditResponse, scores: ReturnType<typeof calcu
         {}
     );
 
-    return [
+    const adv = data.metrics.advanced;
+
+    const insights: AuditInsight[] = [
         {
             id: "seo-structure",
             category: "seo",
@@ -201,6 +236,46 @@ function mapInsights(data: BackendAuditResponse, scores: ReturnType<typeof calcu
             ),
         },
     ];
+
+    // Add Performance insight if backend provides it.
+    if (data.ai_report.insights.performance_health) {
+        insights.push({
+            id: "performance-health",
+            category: "ux",
+            title: CATEGORY_META.performance_health.title,
+            score: scores.performance,
+            icon: CATEGORY_META.performance_health.icon,
+            summary: data.ai_report.insights.performance_health,
+            details: splitInsightDetails(
+                data.ai_report.insights.performance_health,
+                undefined,
+                adv?.load_time_ms !== undefined
+                    ? `Load time: ${(adv.load_time_ms / 1000).toFixed(1)}s. Scripts: ${adv.external_scripts ?? "unknown"}.`
+                    : undefined
+            ),
+        });
+    }
+
+    // Add Accessibility Audit insight if backend provides it.
+    if (data.ai_report.insights.accessibility_audit) {
+        insights.push({
+            id: "accessibility-audit",
+            category: "accessibility",
+            title: CATEGORY_META.accessibility_audit.title,
+            score: scores.accessibility,
+            icon: CATEGORY_META.accessibility_audit.icon,
+            summary: data.ai_report.insights.accessibility_audit,
+            details: splitInsightDetails(
+                data.ai_report.insights.accessibility_audit,
+                firstIssueByCategory.accessibility,
+                adv?.unlabelled_inputs !== undefined
+                    ? `ARIA roles: ${adv.aria_roles ?? 0}. Unlabelled inputs: ${adv.unlabelled_inputs}.`
+                    : undefined
+            ),
+        });
+    }
+
+    return insights;
 }
 
 function mapPriority(severity: BackendAuditIssue["severity"]): AuditRecommendation["priority"] {
@@ -221,17 +296,22 @@ function mapRecommendations(aiReport: BackendAiReport): AuditRecommendation[] {
             issue.severity === "high"
                 ? "High impact on visibility, experience, or accessibility."
                 : issue.severity === "medium"
-                  ? "Meaningful improvement opportunity with moderate product impact."
-                  : "Incremental quality improvement for the audited page.",
+                    ? "Meaningful improvement opportunity with moderate product impact."
+                    : "Incremental quality improvement for the audited page.",
     }));
 }
 
 export function normalizeAuditResult(data: BackendAuditResponse): AuditResult {
     const scores = calculateScores(data);
     const insights = mapInsights(data, scores);
+
+    // Include performance in overall score if available.
+    const scoreValues = Object.values(scores);
     const overallScore = clampScore(
-        Object.values(scores).reduce((sum, score) => sum + score, 0) / Object.values(scores).length
+        scoreValues.reduce((sum, score) => sum + score, 0) / scoreValues.length
     );
+
+    const adv = data.metrics.advanced;
 
     return {
         url: data.url,
@@ -262,6 +342,52 @@ export function normalizeAuditResult(data: BackendAuditResponse): AuditResult {
             },
             mediaAssets: data.metrics.image_count,
         },
+        // Pass through the raw advanced diagnostics for the frontend.
+        advanced: adv ? {
+            load_time_ms: adv.load_time_ms,
+            lcp_ms: adv.lcp_ms,
+            cls: adv.cls,
+            total_kb: adv.total_kb,
+            html_kb: adv.html_kb,
+            js_kb: adv.js_kb,
+            css_kb: adv.css_kb,
+            images_kb: adv.images_kb,
+            status_code: adv.status_code,
+            dom_elements: adv.dom_elements,
+            inline_styles: adv.inline_styles,
+            external_stylesheets: adv.external_stylesheets,
+            external_scripts: adv.external_scripts,
+            forms: adv.forms,
+            videos: adv.videos,
+            aria_roles: adv.aria_roles,
+            social_links: adv.social_links,
+            https: adv.https,
+            favicon: adv.favicon,
+            html_lang: adv.html_lang ?? undefined,
+            unlabelled_inputs: adv.unlabelled_inputs,
+        } : undefined,
+        attention: data.attention ? {
+            viewport: data.attention.viewport,
+            zones: data.attention.zones.map((zone) => ({
+                id: zone.id,
+                type: zone.type,
+                label: zone.label,
+                intensity: zone.intensity,
+                level: zone.level,
+                x: zone.x,
+                y: zone.y,
+                width: zone.width,
+                height: zone.height,
+                aboveFold: zone.above_fold,
+                region: zone.region,
+            })),
+            stats: {
+                aboveFoldShare: data.attention.stats.above_fold_share,
+                scannedElements: data.attention.stats.scanned_elements,
+                dominantRegion: data.attention.stats.dominant_region,
+                strongestZone: data.attention.stats.strongest_zone,
+            },
+        } : undefined,
         insights,
         recommendations: mapRecommendations(data.ai_report),
     };
@@ -270,20 +396,14 @@ export function normalizeAuditResult(data: BackendAuditResponse): AuditResult {
 export async function requestAudit(url: string, backend?: "ollama" | "openrouter") {
     const response = await fetch("/api/audit", {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(backend ? { url, backend } : { url }),
     });
 
     const payload = await response.json().catch(() => null);
-
     if (!response.ok) {
         const message =
-            payload?.error ||
-            payload?.detail ||
-            payload?.message ||
-            "Audit request failed.";
+            payload?.error || payload?.detail || payload?.message || "Audit request failed.";
         throw new Error(message);
     }
 
@@ -293,9 +413,7 @@ export async function requestAudit(url: string, backend?: "ollama" | "openrouter
 export async function startAuditJob(url: string, backend?: "ollama" | "openrouter") {
     const response = await fetch("/api/audit/start", {
         method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(backend ? { url, backend } : { url }),
     });
 

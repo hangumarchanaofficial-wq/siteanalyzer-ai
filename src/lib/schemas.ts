@@ -1,3 +1,7 @@
+// ─────────────────────────────────────────────────────────────────────
+// schemas.ts — TypeScript interfaces matching backend JSON payloads.
+// ─────────────────────────────────────────────────────────────────────
+
 export interface BackendAuditIssue {
     category: "seo" | "ux" | "content" | "accessibility";
     severity: "low" | "medium" | "high";
@@ -15,8 +19,62 @@ export interface BackendAiReport {
         cta_usage: string;
         content_depth: string;
         ux_concerns: string;
+        performance_health?: string;
+        accessibility_audit?: string;
     };
     issues: BackendAuditIssue[];
+}
+
+export interface BackendAdvancedDiagnostics {
+    load_time_ms?: number;
+    lcp_ms?: number;
+    cls?: number;
+    total_kb?: number;
+    html_kb?: number;
+    js_kb?: number;
+    css_kb?: number;
+    images_kb?: number;
+    status_code?: number;
+    dom_elements?: number;
+    inline_styles?: number;
+    external_stylesheets?: number;
+    external_scripts?: number;
+    forms?: number;
+    videos?: number;
+    aria_roles?: number;
+    social_links?: number;
+    https?: boolean;
+    favicon?: boolean;
+    html_lang?: string | null;
+    unlabelled_inputs?: number;
+}
+
+export interface BackendAttentionZone {
+    id: string;
+    type: string;
+    label: string;
+    intensity: number;
+    level: "high" | "medium" | "low";
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    above_fold: boolean;
+    region: string;
+}
+
+export interface BackendAttentionModel {
+    viewport: {
+        width: number;
+        height: number;
+    };
+    zones: BackendAttentionZone[];
+    stats: {
+        above_fold_share: number;
+        scanned_elements: number;
+        dominant_region: string | null;
+        strongest_zone: string | null;
+    };
 }
 
 export interface AuditJobEvent {
@@ -29,6 +87,7 @@ export interface AuditJobEvent {
 export interface BackendAuditResponse {
     url: string;
     page_type_hint: string;
+    attention?: BackendAttentionModel;
     metrics: {
         word_count: number;
         headings: {
@@ -47,6 +106,7 @@ export interface BackendAuditResponse {
             title: string | null;
             description: string | null;
         };
+        advanced?: BackendAdvancedDiagnostics;
     };
     content_signals: {
         h2_texts: string[];

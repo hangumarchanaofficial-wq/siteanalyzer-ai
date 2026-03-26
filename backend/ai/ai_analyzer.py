@@ -92,8 +92,10 @@ _THINK_TAG_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 _THINK_OPEN_RE = re.compile(r"<think>.*", re.DOTALL)
 
 
-def _strip_think_tags(text: str) -> str:
+def _strip_think_tags(text: str | None) -> str:
     """Remove all <think>…</think> blocks from the LLM response."""
+    if text is None:
+        return ""
     cleaned = _THINK_TAG_RE.sub("", text)
     # Handle unclosed <think> (model was cut off mid-thought).
     cleaned = _THINK_OPEN_RE.sub("", cleaned)
@@ -104,7 +106,7 @@ def _strip_think_tags(text: str) -> str:
 #  JSON extraction from raw text
 # ──────────────────────────────────────────────────────────────────────
 
-def _extract_json_from_response(raw: str) -> str:
+def _extract_json_from_response(raw: str | None) -> str:
     """
     Extract the JSON object from a potentially messy LLM response.
 
@@ -144,6 +146,40 @@ def _extract_json_from_response(raw: str) -> str:
         text = text[: end_pos + 1]
 
     return text
+
+
+def _coerce_openrouter_content(message: Dict[str, Any]) -> str:
+    """
+    Normalize OpenRouter/OpenAI-style message payloads into a text string.
+
+    Some providers return:
+    - {"content": "..."}
+    - {"content": [{"type": "text", "text": "..."}]}
+    - {"content": None, "reasoning": "..."}
+    """
+    content = message.get("content")
+
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, list):
+        text_parts: list[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    text_parts.append(text)
+            elif isinstance(item, str) and item.strip():
+                text_parts.append(item)
+        if text_parts:
+            return "\n".join(text_parts)
+
+    for fallback_key in ("reasoning", "refusal"):
+        fallback = message.get(fallback_key)
+        if isinstance(fallback, str) and fallback.strip():
+            return fallback
+
+    return ""
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -277,6 +313,14 @@ async def _call_openrouter(
             88,
         )
 
+        if response.status_code == 401:
+            raise RuntimeError(
+                "OpenRouter rejected the API key with 401 Unauthorized. "
+                "For Docker runs, pass OPENROUTER_API_KEY into the running container "
+                "with `docker run --env-file .env ...` or `-e OPENROUTER_API_KEY=...`. "
+                "If the key is already present, verify that it is valid and not revoked."
+            )
+
         response.raise_for_status()
         data = response.json()
 
@@ -285,7 +329,14 @@ async def _call_openrouter(
     if not choices:
         raise RuntimeError("OpenRouter returned no choices.")
 
-    return choices[0].get("message", {}).get("content", "")
+    message = choices[0].get("message", {})
+    content = _coerce_openrouter_content(message)
+    if not content.strip():
+        raise RuntimeError(
+            "OpenRouter returned an empty message content payload."
+        )
+
+    return content
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -394,6 +445,8 @@ async def analyse_with_ai(
 
     # Step 3 — Extract JSON from (possibly messy) response.
     json_str = _extract_json_from_response(raw_response)
+    if not json_str.strip():
+        raise RuntimeError("LLM returned no JSON content to parse.")
 
     await _emit_progress(
         progress_callback,
@@ -455,6 +508,8 @@ async def analyse_with_ai(
             progress_callback=progress_callback,
         )
         json_str = _extract_json_from_response(raw_response)
+        if not json_str.strip():
+            raise RuntimeError("LLM returned no JSON content to parse on re-generation.")
         result, errors = validate_and_repair(json_str, snapshot_metrics)
 
         if result is not None:

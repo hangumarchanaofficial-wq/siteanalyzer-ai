@@ -13,8 +13,13 @@ import {
 import { ChartCard } from "./ChartCard";
 import { CustomChartTooltip } from "./CustomTooltip";
 import { issueData } from "@/lib/benchmark-data";
+import { IssueDataPoint } from "@/types/benchmark";
 
-export function CommonIssuesChart() {
+interface CommonIssuesChartProps {
+  data?: IssueDataPoint[];
+}
+
+export function CommonIssuesChart({ data = issueData }: CommonIssuesChartProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -31,7 +36,7 @@ export function CommonIssuesChart() {
         {mounted ? (
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
-            data={issueData}
+            data={data}
             layout="vertical"
             margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
             barCategoryGap="20%"
@@ -70,7 +75,7 @@ export function CommonIssuesChart() {
             />
 
             <defs>
-              {issueData.map((entry, i) => (
+              {data.map((entry, i) => (
                 <linearGradient
                   key={`barGrad-${i}`}
                   id={`barGrad-${i}`}
@@ -100,7 +105,7 @@ export function CommonIssuesChart() {
               onMouseEnter={(_, index) => setHoveredIndex(index)}
               onMouseLeave={() => setHoveredIndex(null)}
             >
-              {issueData.map((entry, index) => (
+              {data.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
                   fill={`url(#barGrad-${index})`}
@@ -123,7 +128,7 @@ export function CommonIssuesChart() {
 
       {/* Legend pills below chart */}
       <div className="mt-4 flex flex-wrap gap-2">
-        {issueData.map((entry) => (
+        {data.map((entry) => (
           <div
             key={entry.shortLabel}
             className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/[0.03]"
