@@ -1,0 +1,8 @@
+node_modules
+.next
+.env
+logs/*.log
+.idea
+backend/__pycache__
+backend/tests/__pycache__
+.pytest_cache
