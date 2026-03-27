@@ -53,14 +53,15 @@ class OpenRouterConfig:
 
 @dataclass(frozen=True)
 class RetryConfig:
-    max_llm_retries: int = 2
-    max_repair_attempts: int = 1
-    retry_backoff_s: float = 2.0
+    max_llm_retries: int = int(os.getenv("AI_MAX_LLM_RETRIES", "3"))
+    max_repair_attempts: int = int(os.getenv("AI_MAX_REPAIR_ATTEMPTS", "1"))
+    retry_backoff_s: float = float(os.getenv("AI_RETRY_BACKOFF_S", "5.0"))
 
 
 @dataclass(frozen=True)
 class ValidationConfig:
-    max_issues: int = 7
+    min_issues: int = 3
+    max_issues: int = 5
     max_summary_chars: int = 600
     max_insight_chars: int = 400
     max_issue_field_chars: int = 300

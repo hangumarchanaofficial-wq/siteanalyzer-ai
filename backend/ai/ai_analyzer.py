@@ -27,6 +27,7 @@ import asyncio
 import json
 import logging
 import os
+from pathlib import Path
 import re
 import time
 from typing import Any, Awaitable, Callable, Dict, Literal, Optional
@@ -44,6 +45,96 @@ from backend.ai_config import (
 logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[str, str, Optional[int]], Awaitable[None]]
+
+
+def _logs_dir() -> Path:
+    path = Path(__file__).resolve().parents[2] / "logs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _write_text_log(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
+
+
+def _write_json_log(path: Path, payload: Dict[str, Any]) -> None:
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _persist_prompt_artifacts(snapshot: Dict[str, Any], system_prompt: str, user_prompt: str) -> None:
+    logs_dir = _logs_dir()
+    _write_json_log(logs_dir / "sample-input.json", snapshot)
+    _write_text_log(
+        logs_dir / "sample-prompt.txt",
+        "\n\n".join(
+            [
+                "=== SYSTEM PROMPT ===",
+                system_prompt,
+                "=== USER PROMPT ===",
+                user_prompt,
+            ]
+        ),
+    )
+
+
+def _persist_raw_output(raw_output: str) -> None:
+    logs_dir = _logs_dir()
+    _write_text_log(logs_dir / "sample-raw-output.json", raw_output)
+
+
+def _write_prompt_log_summary(snapshot: Dict[str, Any], backend: str) -> None:
+    logs_dir = _logs_dir()
+    summary = "\n".join(
+        [
+            "# Prompt Log",
+            "",
+            "This repository writes prompt artifacts for each audit run.",
+            "",
+            "Generated files:",
+            "- `logs/sample-input.json`: structured snapshot sent into prompt construction",
+            "- `logs/sample-prompt.txt`: exact system prompt and user prompt sent to the model",
+            "- `logs/sample-raw-output.json`: raw model output before JSON extraction/repair",
+            "",
+            f"Latest backend: `{backend}`",
+            f"Latest audited URL: `{snapshot.get('url', 'unknown')}`",
+            "",
+            "The AI layer is intentionally split into:",
+            "- extraction (`fetcher` -> `parser` -> `extractor`)",
+            "- prompt construction (`backend/ai/prompt_builder.py`)",
+            "- model call + retries (`backend/ai/ai_analyzer.py`)",
+            "- validation/repair (`backend/ai/validator.py`)",
+        ]
+    )
+    _write_text_log(logs_dir / "prompt-log.md", summary)
+
+
+def _compute_retry_delay(exc: Exception, attempt: int) -> float:
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        retry_after = exc.response.headers.get("Retry-After")
+        if retry_after:
+            try:
+                return max(float(retry_after), 0.0)
+            except ValueError:
+                pass
+
+    return RETRY_CFG.retry_backoff_s * attempt
+
+
+def _format_llm_error(exc: Exception, backend: str) -> str:
+    if isinstance(exc, RuntimeError):
+        return str(exc)
+
+    if isinstance(exc, httpx.HTTPStatusError) and exc.response is not None:
+        status_code = exc.response.status_code
+        if backend == "openrouter" and status_code == 429:
+            return (
+                "OpenRouter rate-limited the request with 429 Too Many Requests. "
+                "This commonly happens on free models or low-credit accounts. "
+                "Wait and retry, or set OPENROUTER_MODEL to a paid/stabler model."
+            )
+        return f"{exc}"
+
+    return str(exc)
 
 
 async def _emit_progress(
@@ -320,6 +411,12 @@ async def _call_openrouter(
                 "with `docker run --env-file .env ...` or `-e OPENROUTER_API_KEY=...`. "
                 "If the key is already present, verify that it is valid and not revoked."
             )
+        if response.status_code == 429:
+            raise httpx.HTTPStatusError(
+                "OpenRouter rate limit exceeded.",
+                request=response.request,
+                response=response,
+            )
 
         response.raise_for_status()
         data = response.json()
@@ -399,6 +496,8 @@ async def analyse_with_ai(
     """
     # Step 1 — Build prompts.
     system_prompt, user_prompt = build_prompts(snapshot)
+    _persist_prompt_artifacts(snapshot, system_prompt, user_prompt)
+    _write_prompt_log_summary(snapshot, backend)
 
     await _emit_progress(
         progress_callback,
@@ -427,7 +526,7 @@ async def analyse_with_ai(
                 progress_callback=progress_callback,
             )
             break
-        except (httpx.HTTPStatusError, httpx.ConnectError, httpx.ReadTimeout) as exc:
+        except (RuntimeError, httpx.HTTPStatusError, httpx.ConnectError, httpx.ReadTimeout) as exc:
             last_error = exc
             logger.warning(
                 "LLM call attempt %d/%d failed: %s",
@@ -436,15 +535,23 @@ async def analyse_with_ai(
                 exc,
             )
             if attempt < RETRY_CFG.max_llm_retries:
-                await asyncio.sleep(RETRY_CFG.retry_backoff_s * attempt)
+                delay_s = _compute_retry_delay(exc, attempt)
+                await _emit_progress(
+                    progress_callback,
+                    "ai:retry",
+                    f"retrying after {delay_s:.1f}s due to {type(exc).__name__}",
+                    74,
+                )
+                await asyncio.sleep(delay_s)
     else:
         raise RuntimeError(
             f"All {RETRY_CFG.max_llm_retries} LLM call attempts failed.  "
-            f"Last error: {last_error}"
+            f"Last error: {_format_llm_error(last_error, backend)}"
         )
 
     # Step 3 — Extract JSON from (possibly messy) response.
     json_str = _extract_json_from_response(raw_response)
+    _persist_raw_output(raw_response)
     if not json_str.strip():
         raise RuntimeError("LLM returned no JSON content to parse.")
 

@@ -1,0 +1,57 @@
+{
+  "url": "https://example.com/pricing",
+  "page_type_hint": "landing_page",
+  "metrics": {
+    "word_count": 842,
+    "headings": {
+      "h1": 1,
+      "h2": 4,
+      "h3": 3
+    },
+    "cta_count": 2,
+    "links": {
+      "internal": 12,
+      "external": 2
+    },
+    "image_count": 6,
+    "missing_alt_percent": 33.3,
+    "meta": {
+      "title": "Example Pricing | Conversion-focused Website Audits",
+      "description": null
+    },
+    "advanced": {
+      "load_time_ms": 2860,
+      "status_code": 200,
+      "dom_elements": 1098,
+      "inline_styles": 44,
+      "external_stylesheets": 4,
+      "external_scripts": 11,
+      "forms": 1,
+      "videos": 0,
+      "aria_roles": 6,
+      "social_links": 3,
+      "https": true,
+      "favicon": true,
+      "html_lang": "en",
+      "unlabelled_inputs": 1
+    }
+  },
+  "content_signals": {
+    "h2_texts": [
+      "Pricing",
+      "Why teams switch",
+      "Compare plans",
+      "FAQ"
+    ],
+    "h3_texts": [
+      "Starter",
+      "Growth",
+      "Enterprise"
+    ],
+    "cta_texts": [
+      "Start free trial",
+      "Book a demo"
+    ],
+    "main_text_excerpt": "Example helps teams audit marketing websites, improve conversion paths, and prioritize technical fixes with AI-grounded analysis."
+  }
+}

@@ -376,7 +376,11 @@ def validate_and_repair(
         return None, errors
 
     # Phase 4 — Final sanity: ensure we have at least 1 issue.
-    if not corrected.get("issues"):
-        return None, ["Report contains zero issues after validation."]
+    issue_count = len(corrected.get("issues", []))
+    if issue_count < VALIDATION_CFG.min_issues:
+        return None, [
+            f"Report contains only {issue_count} issue(s) after validation. "
+            f"Expected at least {VALIDATION_CFG.min_issues}."
+        ]
 
     return corrected, []

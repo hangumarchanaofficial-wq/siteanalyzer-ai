@@ -131,3 +131,11 @@ export interface AuditJobStatusResponse {
     result: BackendAuditResponse | null;
     error: string | null;
 }
+
+export interface PromptLogsResponse {
+    summary: string;
+    sampleInput: string;
+    samplePrompt: string;
+    sampleRawOutput: string;
+    updatedAt: string | null;
+}

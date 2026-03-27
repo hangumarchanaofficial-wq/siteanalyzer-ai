@@ -215,7 +215,7 @@ _SYSTEM_PROMPT = textwrap.dedent("""\
     2. If a metric is null or missing, say "unknown" — never guess.
     3. Keep your reasoning internal.  Output ONLY the JSON object.
        No markdown fences, no explanation outside the JSON.
-    4. Return a maximum of 7 issues.  Prioritise by severity.
+    4. Return 3 to 5 issues total.  Prioritise by severity.
     5. Every issue MUST include a "metric_reference" field that names
        the specific metric it relates to (e.g. "missing_alt_percent",
        "meta.description", "word_count", "advanced.load_time_ms",

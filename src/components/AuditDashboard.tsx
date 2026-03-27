@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { AuditResult } from "@/types/audit";
 import { FactualMetricsSection } from "@/components/factual-metrics/FactualMetricsSection";
 import { FactualMetricsData } from "@/types/factual-metrics";
@@ -7,18 +8,18 @@ import { ExtendedMetricsData } from "@/types/extended-metrics";
 import { ExtendedMetricsRow } from "@/components/factual-metrics/ExtendedMetricsRow";
 import { InsightsPanel } from "@/components/insights-panel";
 import { RecommendationsSection } from "@/components/RecommendationsSection";
-import { AttentionHeatmap } from "@/components/AttentionHeatmap";
 import { ScoreRing } from "@/components/ScoreRing";
+import { PromptLogModal } from "@/components/PromptLogModal";
 import {
   Globe,
   Clock,
-  Download,
   RotateCcw,
   ExternalLink,
   AlertTriangle,
   FileText,
   ShieldAlert,
   Zap,
+  ScrollText,
 } from "lucide-react";
 import { GlowBadge } from "@/components/GlowBadge";
 
@@ -100,6 +101,7 @@ function toExtendedMetrics(result: AuditResult): ExtendedMetricsData {
 }
 
 export function AuditDashboard({ result, onReset }: AuditDashboardProps) {
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const timeAgo = getTimeAgo(result.timestamp);
   const factualMetrics = toFactualMetrics(result);
   const extendedMetrics = toExtendedMetrics(result);
@@ -148,59 +150,6 @@ export function AuditDashboard({ result, onReset }: AuditDashboardProps) {
     },
   ];
 
-  const handleExport = () => {
-    const url = new URL(result.url);
-    const host = url.hostname.replace(/^www\./, "");
-    const timestamp = new Date(result.timestamp).toISOString().replace(/[:.]/g, "-");
-    const baseName = `${host}-audit-${timestamp}`;
-
-    const markdown = [
-      "# Audit Report",
-      "",
-      `URL: ${result.url}`,
-      `Generated: ${new Date(result.timestamp).toLocaleString()}`,
-      `Overall Score: ${result.overallScore}/100`,
-      "",
-      "## Summary",
-      topInsight?.summary ?? "No summary available.",
-      "",
-      "## Metrics",
-      `- Word Count: ${result.metrics.wordCount}`,
-      `- H1/H2/H3: ${result.metrics.headings.h1}/${result.metrics.headings.h2}/${result.metrics.headings.h3}`,
-      `- CTAs: ${result.metrics.ctaCount}`,
-      `- Images: ${result.metrics.images.total}`,
-      `- Missing Alt: ${result.metrics.images.missingAltPercent}%`,
-      `- Internal Links: ${result.metrics.links.internal}`,
-      `- External Links: ${result.metrics.links.external}`,
-      result.advanced?.load_time_ms !== undefined
-        ? `- Load Time: ${(result.advanced.load_time_ms / 1000).toFixed(2)}s`
-        : "- Load Time: Unknown",
-      "",
-      "## Insights",
-      ...result.insights.map(
-        (insight) => `- ${insight.title} (${insight.score}): ${insight.summary}`,
-      ),
-      "",
-      "## Recommendations",
-      ...result.recommendations.map(
-        (recommendation) =>
-          `- [${recommendation.priority.toUpperCase()}] ${recommendation.title}: ${recommendation.action}`,
-      ),
-      "",
-    ].join("\n");
-
-    downloadFile(
-      `${baseName}.md`,
-      markdown,
-      "text/markdown;charset=utf-8",
-    );
-    downloadFile(
-      `${baseName}.json`,
-      JSON.stringify(result, null, 2),
-      "application/json;charset=utf-8",
-    );
-  };
-
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-4">
@@ -236,11 +185,11 @@ export function AuditDashboard({ result, onReset }: AuditDashboardProps) {
             New Audit
           </button>
           <button
-            onClick={handleExport}
-            className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-black bg-white rounded-xl hover:bg-[#f1f3f5] transition-all duration-200"
+            onClick={() => setIsLogModalOpen(true)}
+            className="flex items-center gap-2 rounded-xl bg-white px-3.5 py-2 text-xs font-semibold text-black transition-all duration-200 hover:bg-[#f1f3f5]"
           >
-            <Download className="w-3.5 h-3.5" />
-            Export
+            <ScrollText className="h-3.5 w-3.5" />
+            Logs
           </button>
         </div>
       </div>
@@ -317,7 +266,10 @@ export function AuditDashboard({ result, onReset }: AuditDashboardProps) {
       <ExtendedMetricsRow data={extendedMetrics} />
       <InsightsPanel insights={result.insights} />
       <RecommendationsSection recommendations={result.recommendations} />
-      <AttentionHeatmap attention={result.attention} />
+      <PromptLogModal
+        isOpen={isLogModalOpen}
+        onClose={() => setIsLogModalOpen(false)}
+      />
     </div>
   );
 }
@@ -331,16 +283,4 @@ function getTimeAgo(timestamp: string): string {
   if (diff < 3600) return `${Math.floor(diff / 60)} mins ago`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
-}
-
-function downloadFile(filename: string, content: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType });
-  const objectUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = objectUrl;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(objectUrl);
 }

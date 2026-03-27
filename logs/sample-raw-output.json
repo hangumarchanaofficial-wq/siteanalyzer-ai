@@ -1,0 +1,46 @@
+{
+  "summary": "This pricing page has a solid structural foundation with 1 H1, 4 H2s, and 842 words, but it still has an important SEO gap because the meta description is missing. Technical quality is mixed: load time is 2860ms, 33.3% of images are missing alt text, and one input is unlabelled.",
+  "insights": {
+    "seo_structure": "The heading structure is healthy, but the missing meta description weakens search snippet control despite a usable title.",
+    "messaging_clarity": "The page communicates product intent clearly through pricing and comparison sections, though the value proposition could be stronger above the plan table.",
+    "cta_usage": "There are two clear CTAs covering self-serve and sales-led paths, but the primary CTA could be repeated deeper in the page.",
+    "content_depth": "At 842 words, the page has enough substance to support a pricing decision, but deeper objection-handling in the FAQ would strengthen conversion intent.",
+    "ux_concerns": "Load time, missing alt text, and one unlabelled input create avoidable friction in an otherwise straightforward page structure.",
+    "performance_health": "2860ms load time and 11 external scripts indicate moderate front-end weight that should be reduced.",
+    "accessibility_audit": "Alt coverage and form labeling need improvement even though html_lang and basic semantic markers are present."
+  },
+  "issues": [
+    {
+      "category": "seo",
+      "severity": "high",
+      "metric_reference": "meta.description",
+      "issue": "Meta description is missing.",
+      "why_it_matters": "Search engines may generate a weaker snippet, reducing click-through rate.",
+      "suggested_fix": "Add a 120-160 character description that reflects the page offer and core CTA."
+    },
+    {
+      "category": "accessibility",
+      "severity": "high",
+      "metric_reference": "missing_alt_percent",
+      "issue": "33.3% of images are missing alt text.",
+      "why_it_matters": "Screen readers lose context and image SEO value is reduced.",
+      "suggested_fix": "Audit all image elements and add descriptive alt text or explicit empty alt values for decorative assets."
+    },
+    {
+      "category": "ux",
+      "severity": "medium",
+      "metric_reference": "advanced.load_time_ms",
+      "issue": "Page load time is 2860ms, above the ideal threshold.",
+      "why_it_matters": "Slower pages reduce engagement and conversion efficiency.",
+      "suggested_fix": "Reduce script cost, defer non-critical JS, and optimize render-blocking assets."
+    },
+    {
+      "category": "accessibility",
+      "severity": "medium",
+      "metric_reference": "advanced.unlabelled_inputs",
+      "issue": "One form input is missing a label.",
+      "why_it_matters": "Unlabelled fields create usability and compliance issues for assistive technology users.",
+      "suggested_fix": "Associate a visible or screen-reader label with every input in the form."
+    }
+  ]
+}

@@ -11,6 +11,20 @@ import {
   ScanSearch,
 } from "lucide-react";
 import { AuditRecommendation, AuditResult } from "@/types/audit";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  PolarAngleAxis,
+  PolarGrid,
+  Radar as RechartsRadar,
+  RadarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { ChartCard } from "@/components/benchmarks/ChartCard";
 
 interface IndustryBenchmarksProps {
   result?: AuditResult | null;
@@ -23,6 +37,11 @@ interface PriorityPoint {
   category: string;
   impact: number;
   effort: number;
+}
+
+interface LaidOutPriorityPoint extends PriorityPoint {
+  left: number;
+  top: number;
 }
 
 interface LoadMetric {
@@ -41,6 +60,17 @@ interface StructuralMetric {
   helper: string;
   score: number;
   tone: Tone;
+}
+
+interface ScoreDatum {
+  label: string;
+  score: number;
+}
+
+interface RiskDatum {
+  label: string;
+  value: number;
+  helper: string;
 }
 
 function priorityToImpact(priority: AuditRecommendation["priority"]) {
@@ -68,6 +98,42 @@ function buildPriorityPoints(result: AuditResult): PriorityPoint[] {
     impact: Math.min(94, priorityToImpact(recommendation.priority) + index * 2),
     effort: Math.max(12, Math.min(88, categoryToEffort(recommendation.category) + index * 4)),
   }));
+}
+
+function layoutPriorityPoints(points: PriorityPoint[]): LaidOutPriorityPoint[] {
+  const sorted = [...points].sort((a, b) => {
+    const topDelta = (100 - b.impact) - (100 - a.impact);
+    if (Math.abs(topDelta) > 16) return topDelta;
+    return a.effort - b.effort;
+  });
+
+  const placed: LaidOutPriorityPoint[] = [];
+
+  for (const point of sorted) {
+    const baseLeft = Math.max(18, Math.min(82, point.effort));
+    const baseTop = Math.max(14, Math.min(86, 100 - point.impact));
+    let left = baseLeft;
+    let top = baseTop;
+
+    for (let pass = 0; pass < 8; pass += 1) {
+      const collision = placed.some(
+        (existing) =>
+          Math.abs(existing.left - left) < 20 && Math.abs(existing.top - top) < 12,
+      );
+
+      if (!collision) break;
+
+      const verticalDirection = baseTop < 50 ? 1 : -1;
+      const horizontalDirection = baseLeft < 50 ? 1 : -1;
+
+      top = Math.max(14, Math.min(86, top + verticalDirection * 8));
+      left = Math.max(18, Math.min(82, left + horizontalDirection * 4));
+    }
+
+    placed.push({ ...point, left, top });
+  }
+
+  return placed;
 }
 
 function buildLoadMetrics(result: AuditResult): LoadMetric[] {
@@ -114,6 +180,86 @@ function buildLoadMetrics(result: AuditResult): LoadMetric[] {
   ];
 
   return metrics.filter((metric) => metric.raw > 0 || metric.value !== "Unknown");
+}
+
+function buildQualityProfile(result: AuditResult): ScoreDatum[] {
+  const totalLinks = Math.max(1, result.metrics.links.internal + result.metrics.links.external);
+  const internalRatio = result.metrics.links.internal / totalLinks;
+  const trustCount =
+    Number(Boolean(result.advanced?.https)) +
+    Number(Boolean(result.advanced?.favicon)) +
+    Number(Boolean(result.advanced?.html_lang));
+
+  return [
+    {
+      label: "Content",
+      score: clampPercent(Math.min(100, (result.metrics.wordCount / 1200) * 100)),
+    },
+    {
+      label: "Structure",
+      score: clampPercent(
+        (result.metrics.headings.h1 === 1 ? 45 : 20) +
+          Math.min(result.metrics.headings.h2 * 8, 35) +
+          Math.min(result.metrics.headings.h3 * 4, 20),
+      ),
+    },
+    {
+      label: "CTA",
+      score: clampPercent(Math.min(result.metrics.ctaCount, 4) * 25),
+    },
+    {
+      label: "Links",
+      score: clampPercent(internalRatio * 100),
+    },
+    {
+      label: "Trust",
+      score: clampPercent((trustCount / 3) * 100),
+    },
+    {
+      label: "Access",
+      score: clampPercent(
+        100 -
+          Math.min(result.metrics.images.missingAltPercent, 70) -
+          Math.min((result.advanced?.unlabelled_inputs ?? 0) * 10, 30),
+      ),
+    },
+  ];
+}
+
+function buildRiskBreakdown(result: AuditResult): RiskDatum[] {
+  const loadTimeMs = result.advanced?.load_time_ms ?? 0;
+  const scriptCount = result.advanced?.external_scripts ?? 0;
+  const inlineStyles = result.advanced?.inline_styles ?? 0;
+  const unlabeledInputs = result.advanced?.unlabelled_inputs ?? 0;
+
+  return [
+    {
+      label: "Alt text",
+      value: clampPercent(result.metrics.images.missingAltPercent),
+      helper: `${result.metrics.images.missingAlt} images missing alt`,
+    },
+    {
+      label: "Forms",
+      value: clampPercent(Math.min(unlabeledInputs * 22, 100)),
+      helper: `${unlabeledInputs} inputs without labels`,
+    },
+    {
+      label: "Load delay",
+      value: clampPercent((loadTimeMs / 8000) * 100),
+      helper:
+        loadTimeMs > 0 ? `${(loadTimeMs / 1000).toFixed(1)}s total load time` : "Load time unavailable",
+    },
+    {
+      label: "Scripts",
+      value: clampPercent((scriptCount / 20) * 100),
+      helper: `${scriptCount} external scripts found`,
+    },
+    {
+      label: "Inline CSS",
+      value: clampPercent((inlineStyles / 600) * 100),
+      helper: `${inlineStyles} inline style blocks`,
+    },
+  ];
 }
 
 function formatKilobytes(value: number) {
@@ -185,7 +331,13 @@ export function IndustryBenchmarks({ result }: IndustryBenchmarksProps) {
     () => (result ? buildPriorityPoints(result) : []),
     [result],
   );
+  const laidOutPriorityPoints = useMemo(
+    () => layoutPriorityPoints(priorityPoints),
+    [priorityPoints],
+  );
   const loadMetrics = useMemo(() => (result ? buildLoadMetrics(result) : []), [result]);
+  const qualityProfile = useMemo(() => (result ? buildQualityProfile(result) : []), [result]);
+  const riskBreakdown = useMemo(() => (result ? buildRiskBreakdown(result) : []), [result]);
   const strongestAttention = result?.attention?.zones[0];
   const topCtaInsight = result?.insights.find((item) => item.category === "cta");
   const aboveFoldShare = result?.attention?.stats.aboveFoldShare ?? 0;
@@ -400,19 +552,19 @@ export function IndustryBenchmarks({ result }: IndustryBenchmarksProps) {
                     </div>
 
                     <div className="absolute inset-0">
-                      {priorityPoints.map((point) => (
+                      {laidOutPriorityPoints.map((point) => (
                         <div
                           key={point.id}
                           className="absolute -translate-x-1/2 -translate-y-1/2"
                           style={{
-                            left: `${point.effort}%`,
-                            top: `${100 - point.impact}%`,
+                            left: `${point.left}%`,
+                            top: `${point.top}%`,
                           }}
                         >
-                          <div className="rounded-full border border-white/[0.08] bg-surface-3/95 px-3 py-2 backdrop-blur-sm shadow-[0_10px_24px_rgba(0,0,0,0.22)]">
+                          <div className="max-w-[220px] rounded-2xl border border-white/[0.08] bg-surface-3/95 px-3 py-2 backdrop-blur-sm shadow-[0_10px_24px_rgba(0,0,0,0.22)]">
                             <div className="flex items-center gap-2">
                               <div className={clsx("h-2 w-2 rounded-full", priorityTone(point.priority))} />
-                              <span className="max-w-[150px] truncate text-xs font-medium text-white/78">
+                              <span className="line-clamp-1 text-xs font-medium text-white/78">
                                 {point.title}
                               </span>
                             </div>
@@ -690,6 +842,87 @@ export function IndustryBenchmarks({ result }: IndustryBenchmarksProps) {
                 </div>
               </section>
             </div>
+
+            <div
+              className={clsx(
+                "mt-6 grid grid-cols-1 gap-6 transition-all duration-700 delay-[600ms] xl:grid-cols-2",
+                isVisible ? "translate-y-0 opacity-100" : "translate-y-8 opacity-0",
+              )}
+            >
+              <ChartCard
+                title="Quality Profile"
+                subtitle="Normalized health across the page's most important audit dimensions."
+                headerRight={
+                  <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-white/40">
+                    Live audit
+                  </span>
+                }
+              >
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart data={qualityProfile} outerRadius="72%">
+                      <PolarGrid stroke="rgba(255,255,255,0.08)" />
+                      <PolarAngleAxis
+                        dataKey="label"
+                        tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 11 }}
+                      />
+                      <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "rgba(255,255,255,0.85)" }} />
+                      <RechartsRadar
+                        dataKey="score"
+                        stroke="#7dd3fc"
+                        fill="#38bdf8"
+                        fillOpacity={0.26}
+                        strokeWidth={2}
+                      />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+              </ChartCard>
+
+              <ChartCard
+                title="Risk Concentration"
+                subtitle="Where the current page is accumulating the most implementation pressure."
+                headerRight={
+                  <span className="rounded-full border border-red-400/18 bg-red-400/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-red-200/80">
+                    Hotspots
+                  </span>
+                }
+              >
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={riskBreakdown} layout="vertical" margin={{ top: 8, right: 8, left: 8, bottom: 8 }}>
+                      <CartesianGrid stroke="rgba(255,255,255,0.05)" horizontal={false} />
+                      <XAxis
+                        type="number"
+                        domain={[0, 100]}
+                        tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 11 }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="label"
+                        width={74}
+                        tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 11 }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <Tooltip
+                        cursor={{ fill: "rgba(255,255,255,0.03)" }}
+                        contentStyle={tooltipStyle}
+                        formatter={(value) => `${value ?? 0}%`}
+                        labelFormatter={(label, payload) =>
+                          payload?.[0]?.payload?.helper
+                            ? `${label} - ${payload[0].payload.helper}`
+                            : `${label}`
+                        }
+                      />
+                      <Bar dataKey="value" radius={[999, 999, 999, 999]} fill="#f87171" barSize={14} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </ChartCard>
+            </div>
           </>
         ) : (
           <div
@@ -711,6 +944,14 @@ export function IndustryBenchmarks({ result }: IndustryBenchmarksProps) {
     </section>
   );
 }
+
+const tooltipStyle = {
+  backgroundColor: "rgba(10,10,12,0.92)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: "14px",
+  boxShadow: "0 18px 50px rgba(0,0,0,0.28)",
+  color: "rgba(255,255,255,0.82)",
+};
 
 function SignalCard({
   icon,

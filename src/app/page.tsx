@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, type CSSProperties } from "react";
 import { Navbar } from "@/components/Navbar";
 import { HeroSection } from "@/components/HeroSection";
+import { PromptLogModal } from "@/components/PromptLogModal";
 import { IndustryBenchmarks } from "@/components/benchmarks/IndustryBenchmarks";
 import { AuditDashboard } from "@/components/AuditDashboard";
 import { EmptyState } from "@/components/EmptyState";
@@ -11,6 +12,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { AuditResult, AuditState } from "@/types/audit";
 import { AuditJobEvent } from "@/lib/schemas";
 import { getAuditJobStatus, startAuditJob } from "@/lib/ai-analyze";
+import { ScrollText } from "lucide-react";
 
 const snowflakes = [
   { left: "4%", size: 3, duration: 20, delay: -2, drift: 18, opacity: 0.32 },
@@ -51,6 +53,7 @@ export default function Home() {
   const [jobCreatedAt, setJobCreatedAt] = useState("");
   const [jobUpdatedAt, setJobUpdatedAt] = useState("");
   const [jobBackend, setJobBackend] = useState<"ollama" | "openrouter" | "">("");
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -191,6 +194,16 @@ export default function Home() {
           currentUrl={inputUrl}
         />
 
+        <div className="mx-auto -mt-8 flex max-w-7xl justify-center px-4 sm:px-6 lg:px-8">
+          <button
+            onClick={() => setIsLogModalOpen(true)}
+            className="inline-flex items-center gap-2 rounded-full border border-cyan-300/16 bg-cyan-300/[0.08] px-4 py-2.5 text-xs font-medium tracking-[0.12em] text-cyan-100/80 transition-all duration-200 hover:border-cyan-200/24 hover:bg-cyan-300/[0.14] hover:text-white"
+          >
+            <ScrollText className="h-3.5 w-3.5" />
+            VIEW PROMPT LOGS
+          </button>
+        </div>
+
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
           {auditState === "idle" && <EmptyState />}
           {auditState === "loading" && (
@@ -224,59 +237,16 @@ export default function Home() {
 
         {/* Footer */}
         <footer className="relative z-10 border-t border-border-subtle">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-            <div className="flex flex-col md:flex-row items-start justify-between gap-8">
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-7 h-7 rounded-lg bg-gradient-accent flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">L</span>
-                  </div>
-                  <span className="text-sm font-semibold text-white/80">
-                    Lunaria
-                  </span>
-                </div>
-                <p className="text-xs text-white/40">
-                  Built for precise digital experiences. &copy; 2024
-                </p>
-              </div>
-              <div className="flex gap-16 text-xs">
-                <div className="space-y-3">
-                  <p className="text-white/60 font-medium uppercase tracking-wider text-[10px]">
-                    Product
-                  </p>
-                  <p className="text-white/40 hover:text-white/60 cursor-pointer transition-colors">
-                    Features
-                  </p>
-                  <p className="text-white/40 hover:text-white/60 cursor-pointer transition-colors">
-                    API
-                  </p>
-                </div>
-                <div className="space-y-3">
-                  <p className="text-white/60 font-medium uppercase tracking-wider text-[10px]">
-                    Company
-                  </p>
-                  <p className="text-white/40 hover:text-white/60 cursor-pointer transition-colors">
-                    Privacy
-                  </p>
-                  <p className="text-white/40 hover:text-white/60 cursor-pointer transition-colors">
-                    Legal
-                  </p>
-                </div>
-                <div className="space-y-3">
-                  <p className="text-white/60 font-medium uppercase tracking-wider text-[10px]">
-                    Connect
-                  </p>
-                  <p className="text-white/40 hover:text-white/60 cursor-pointer transition-colors">
-                    Twitter
-                  </p>
-                  <p className="text-white/40 hover:text-white/60 cursor-pointer transition-colors">
-                    Support
-                  </p>
-                </div>
-              </div>
-            </div>
+          <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+            <p className="text-center text-sm tracking-[0.08em] text-white/40">
+              &copy; Hangum Archana
+            </p>
           </div>
         </footer>
+        <PromptLogModal
+          isOpen={isLogModalOpen}
+          onClose={() => setIsLogModalOpen(false)}
+        />
       </div>
     </main>
   );

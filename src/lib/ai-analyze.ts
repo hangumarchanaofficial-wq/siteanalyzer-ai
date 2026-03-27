@@ -6,6 +6,7 @@ import {
     BackendAiReport,
     BackendAuditIssue,
     BackendAuditResponse,
+    PromptLogsResponse,
 } from "@/lib/schemas";
 
 const CATEGORY_META: Record<
@@ -448,4 +449,17 @@ export async function getAuditJobStatus(jobId: string) {
         ...status,
         events: Array.isArray(status.events) ? (status.events as AuditJobEvent[]) : [],
     };
+}
+
+export async function getPromptLogs() {
+    const response = await fetch("/api/logs", {
+        cache: "no-store",
+    });
+
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload) {
+        throw new Error(payload?.error || "Failed to fetch prompt logs.");
+    }
+
+    return payload as PromptLogsResponse;
 }
